@@ -301,9 +301,21 @@ def _apply_joins(cfg: dict, subject: dict, key) -> None:
             continue
         if not rows:
             continue
-        # A parcel can carry several structures; take the largest by floor area.
+        # A parcel usually carries several structures — the house plus a garage
+        # or shed. Split them: the dwelling is what a tenant lives in, the rest
+        # is storage that adds utility but not living space.
         area_col = join["fields"].get("living_area")
-        if area_col:
+        dwelling_col = join.get("dwelling_flag_field")
+        if area_col and dwelling_col:
+            dwellings = [r for r in rows if float(r.get(dwelling_col) or 0) > 0]
+            others = [r for r in rows if float(r.get(dwelling_col) or 0) <= 0]
+            if dwellings:
+                other_area = sum(float(r.get(area_col) or 0) for r in others)
+                if other_area:
+                    subject["outbuilding_area"] = round(other_area)
+                    subject["outbuildings"] = len(others)
+                rows = sorted(dwellings, key=lambda r: float(r.get(area_col) or 0), reverse=True)
+        elif area_col:
             rows = sorted(rows, key=lambda r: float(r.get(area_col) or 0), reverse=True)
         row = rows[0]
         for name, col in join["fields"].items():
@@ -323,6 +335,20 @@ def _apply_joins(cfg: dict, subject: dict, key) -> None:
     market = subject.get("market_value")
     if living and market:
         subject["price_per_sqft"] = round(market / living, 2)
+    if living:
+        subject["total_structure_area"] = round(living + (subject.get("outbuilding_area") or 0))
+        # Say what the number is, because it is not what a listing calls living
+        # area. A footprint traces the outside wall, so an attached garage is
+        # inside it — and converting that garage to a bedroom changes the
+        # living area without changing the footprint at all.
+        if cfg.get("area_basis") == "footprint":
+            subject["area_basis"] = "footprint"
+            subject["area_note"] = (
+                "Measured from the building footprint, so it includes an attached garage and "
+                "excludes nothing that sits under the main roof. It is not the appraisal "
+                "district's heated living area: a converted garage adds living space without "
+                "changing this figure, and an unconverted one inflates it. Verify against the "
+                "listing or a walk-through before pricing per square foot.")
 
 
 def _as_year(value) -> int | None:

@@ -424,3 +424,90 @@ class TestLiveParcels:
         """The 'Ave H matched Ave Q' bug, against the live service."""
         d = client.get("/api/parcel", params={"address": "1102 Ave H, Shallowater, TX 79363"}).json()
         assert d.get("subject") is None, "an out-of-coverage address must return no parcel"
+
+
+class TestStructureAreas:
+    """Living area, outbuildings, and being honest that these are footprints."""
+
+    CFG = {
+        "urls": ["http://parcels"],
+        "fields": {"parcel_id": "PIN", "address": "ADDR", "market_value": "VAL"},
+        "value_basis": "market",
+        "area_basis": "footprint",
+        "joins": [{"url": "http://fp", "join_field": "PIN",
+                   "dwelling_flag_field": "NUMBER_RESIDENCES",
+                   "fields": {"living_area": "TOTAL_FLOOR_AREA", "year_built": "DATE_BUILT"}}],
+    }
+
+    def _wire(self, monkeypatch, structures):
+        from app import parcels
+        monkeypatch.setattr(parcels, "_query", lambda url, params: structures)
+
+    def test_dwelling_and_outbuildings_are_separated(self, monkeypatch):
+        from app import parcels
+        self._wire(monkeypatch, [
+            {"TOTAL_FLOOR_AREA": 2739, "NUMBER_RESIDENCES": 1, "DATE_BUILT": 883612800000},
+            {"TOTAL_FLOOR_AREA": 231, "NUMBER_RESIDENCES": 0},
+        ])
+        subject = {"market_value": 298701}
+        parcels._apply_joins(self.CFG, subject, "1")
+        assert subject["living_area"] == 2739, "the dwelling, not the shed"
+        assert subject["outbuilding_area"] == 231
+        assert subject["outbuildings"] == 1
+        assert subject["total_structure_area"] == 2970
+
+    def test_price_per_sqft_uses_living_area_not_total(self, monkeypatch):
+        from app import parcels
+        self._wire(monkeypatch, [
+            {"TOTAL_FLOOR_AREA": 1000, "NUMBER_RESIDENCES": 1},
+            {"TOTAL_FLOOR_AREA": 500, "NUMBER_RESIDENCES": 0},
+        ])
+        subject = {"market_value": 200000}
+        parcels._apply_joins(self.CFG, subject, "1")
+        assert subject["price_per_sqft"] == 200.0, "a shed is not living space"
+
+    def test_the_largest_dwelling_wins_on_a_multi_unit_parcel(self, monkeypatch):
+        from app import parcels
+        self._wire(monkeypatch, [
+            {"TOTAL_FLOOR_AREA": 900, "NUMBER_RESIDENCES": 1},
+            {"TOTAL_FLOOR_AREA": 1400, "NUMBER_RESIDENCES": 1},
+        ])
+        subject = {"market_value": 100000}
+        parcels._apply_joins(self.CFG, subject, "1")
+        assert subject["living_area"] == 1400
+        assert not subject.get("outbuilding_area")
+
+    def test_no_outbuildings_leaves_total_equal_to_living(self, monkeypatch):
+        from app import parcels
+        self._wire(monkeypatch, [{"TOTAL_FLOOR_AREA": 1548, "NUMBER_RESIDENCES": 1}])
+        subject = {"market_value": 131890}
+        parcels._apply_joins(self.CFG, subject, "1")
+        assert subject["total_structure_area"] == subject["living_area"] == 1548
+        assert "outbuilding_area" not in subject
+
+    def test_the_footprint_caveat_is_stated(self, monkeypatch):
+        """A converted garage is exactly what this figure cannot see."""
+        from app import parcels
+        self._wire(monkeypatch, [{"TOTAL_FLOOR_AREA": 1548, "NUMBER_RESIDENCES": 1}])
+        subject = {"market_value": 131890}
+        parcels._apply_joins(self.CFG, subject, "1")
+        assert subject["area_basis"] == "footprint"
+        note = subject["area_note"].lower()
+        assert "garage" in note and "converted" in note
+        assert "not the appraisal district" in note
+
+    def test_epoch_build_dates_become_years(self, monkeypatch):
+        from app import parcels
+        self._wire(monkeypatch, [{"TOTAL_FLOOR_AREA": 1548, "NUMBER_RESIDENCES": 1,
+                                  "DATE_BUILT": 31536000000}])
+        subject = {"market_value": 1}
+        parcels._apply_joins(self.CFG, subject, "1")
+        assert subject["year_built"] == 1971
+
+    def test_plain_years_pass_through(self, monkeypatch):
+        from app import parcels
+        self._wire(monkeypatch, [{"TOTAL_FLOOR_AREA": 1548, "NUMBER_RESIDENCES": 1,
+                                  "DATE_BUILT": 1920}])
+        subject = {"market_value": 1}
+        parcels._apply_joins(self.CFG, subject, "1")
+        assert subject["year_built"] == 1920

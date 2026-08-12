@@ -267,6 +267,16 @@
   table.bench td.note { font-size: 12.5px; color: var(--text-secondary); padding-left: 12px; text-align: left; }
 
 
+  .strip { padding: 0; overflow: hidden; }
+  .strip .stripwrap { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr));
+    gap: 1px; background: var(--border); }
+  .strip .scell { background: var(--surface); padding: 12px 15px; }
+  .strip .scell .k { font-size: 11.5px; color: var(--text-muted); font-weight: 550;
+    text-transform: uppercase; letter-spacing: .03em; }
+  .strip .scell .v { font-size: 21px; font-weight: 620; letter-spacing: -0.01em; margin-top: 2px;
+    font-variant-numeric: tabular-nums; }
+  .strip .scell .d { font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; }
+  .strip .hint { padding: 0 15px 12px; }
   /* ---- callout: a material warning, not decoration ---- */
   .callout { margin-top: 16px; border: 1px solid var(--note-edge, #e8dcbd); background: var(--note, #fdf8ec);
     border-radius: 10px; padding: 12px 14px; }
@@ -740,6 +750,8 @@ function render() {
   const statusColor = v.score >= 70 ? "--good" : v.score >= 50 ? "--series-1" : v.score >= 30 ? "--warning" : "--critical";
 
   /* verdict */
+  out.push(propertyStrip());
+
   out.push(`<div class="card">
     <div class="verdict">
       <div class="hero">
@@ -979,6 +991,38 @@ function insuranceCallout() {
     <div class="ct"><span class="cg" aria-hidden="true">\u25B2</span>Insurance costs more here than a generic estimate assumes.</div>
     ${i.findings.map((f) => `<p>${esc(f)}</p>`).join("")}
     <p style="opacity:.85">${esc(i.policy_note)} Source: ${esc(i.source)}.</p>
+  </div>`;
+}
+
+function propertyStrip() {
+  const p = market && market.parcel;
+  if (!p || (!p.living_area && !p.lot_sqft)) return "";
+  const price = readInputs().purchase_price;
+  const cells = [];
+  if (p.living_area) {
+    cells.push({k: "Living area", v: `${countFmt(p.living_area)} sq ft`,
+                d: p.year_built ? `built ${p.year_built}` : "dwelling"});
+    cells.push({k: "Your $/sq ft", v: usd(price / p.living_area, 2),
+                d: `appraised ${usd(p.price_per_sqft || 0, 2)}`});
+  }
+  if (p.total_structure_area && p.outbuilding_area) {
+    cells.push({k: "Total under roof", v: `${countFmt(p.total_structure_area)} sq ft`,
+                d: `+ ${countFmt(p.outbuilding_area)} sq ft in ${p.outbuildings} outbuilding${p.outbuildings > 1 ? "s" : ""}`});
+  } else if (p.living_area) {
+    cells.push({k: "Total under roof", v: `${countFmt(p.total_structure_area || p.living_area)} sq ft`,
+                d: "no separate outbuildings on record"});
+  }
+  if (p.lot_sqft) cells.push({k: "Lot", v: `${countFmt(p.lot_sqft)} sq ft`,
+    d: p.lot_acres ? `${p.lot_acres} acres` : ""});
+  if (p.market_value) cells.push({k: "Appraised value", v: usd(p.market_value),
+    d: p.exemptions ? `exemptions: ${esc(p.exemptions)}` : "no exemptions"});
+  if (!cells.length) return "";
+  return `<div class="card strip">
+    <div class="stripwrap">
+      ${cells.map((c) => `<div class="scell"><div class="k">${c.k}</div>
+        <div class="v">${c.v}</div><div class="d">${c.d}</div></div>`).join("")}
+    </div>
+    ${p.area_note ? `<p class="hint" style="margin:10px 0 0">${esc(p.area_note)}</p>` : ""}
   </div>`;
 }
 

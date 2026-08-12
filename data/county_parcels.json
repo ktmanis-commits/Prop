@@ -101,10 +101,13 @@
             "living_area": "TOTAL_FLOOR_AREA",
             "year_built": "DATE_BUILT",
             "stories": "TOTAL_NUMB_FLOORS",
-            "residences": "NUMBER_RESIDENCES"
-          }
+            "residences": "NUMBER_RESIDENCES",
+            "structure_name": "STRUCTURE_NAME"
+          },
+          "dwelling_flag_field": "NUMBER_RESIDENCES"
         }
-      ]
+      ],
+      "area_basis": "footprint"
     }
   },
   "non_disclosure_states": {

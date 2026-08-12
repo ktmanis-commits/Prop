@@ -58,6 +58,14 @@ assembles **comparable sales** from recorded deed transfers nearby, sized within
 assessor's, the comps', and the ZIP median. They will not agree, and the spread
 is the point.
 
+**Separates living area from total area.** A parcel usually carries more than
+one structure — the dwelling plus a garage or shed — so the app reports the
+dwelling, the detached outbuildings and the total under roof as three
+different numbers, and prices per square foot off the dwelling alone. It also
+says what the figure is *not*: these are building footprints, so an attached
+garage sits inside the measurement and a converted garage adds living space
+without changing it. Verify against the listing before pricing per foot.
+
 **Models how the deal is capitalised.** Rehab is either capital you put in or
 debt you take on, so the rehab budget carries a financed percentage: financing
 it lowers cash in, raises the payment and cuts DSCR, and the app shows all
@@ -371,5 +379,5 @@ data/migration.json    dated U-Haul Growth Index snapshot (no API exists)
 data/county_parcels.json  per-county assessor adapters and field mappings
 data/tax_jurisdictions.json  adopted tax rates by taxing unit
 data/insurance_by_zip.csv   premiums and claims history for ~25,600 ZIPs
-tests/                 183 tests, offline by default
+tests/                 190 tests, offline by default
 ```
