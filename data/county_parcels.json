@@ -50,21 +50,22 @@
       "county": "Lubbock County",
       "state": "TX",
       "urls": [
-        "https://pubgis.ci.lubbock.tx.us/server/rest/services/ParcelViewerSearch/MapServer/2"
+        "https://pubgis.ci.lubbock.tx.us/server/rest/services/ParcelViewer/MapServer/5"
       ],
       "wkid": 4326,
       "attribution": "City of Lubbock public GIS, parcels valued by Lubbock Central Appraisal District",
       "value_basis": "market",
       "verified": "2026-08-12",
       "residential_where": "SPTB_CODE LIKE 'A%'",
-      "coverage_note": "Covers the City of Lubbock. Texas is a non-disclosure state, so no sale prices are published; the appraisal district's value, land/improvement split and lot size are.",
+      "coverage_note": "Covers addresses inside the City of Lubbock's GIS (about 108,000 parcels). Lubbock County towns such as Slaton, Wolfforth, Idalou and Shallowater are outside it and return no parcel. Texas is a non-disclosure state, so no sale prices are published; the appraisal district's value, land/improvement split and lot size are.",
       "address_layer": {
         "url": "https://pubgis.ci.lubbock.tx.us/server/rest/services/ParcelViewerSearch/MapServer/0",
         "number_field": "ADDR",
         "street_field": "STREET",
         "address_field": "FULL_ADDRESS",
         "join_field": "PIN",
-        "parcel_join_field": "PIN"
+        "parcel_join_field": "PIN",
+        "city_field": "City"
       },
       "land_use_codes": {
         "A1": "Single-family residence",
@@ -87,12 +88,27 @@
         "building_value": "IMPVALUE",
         "lot_sqft": "SQUARE_FOOT",
         "land_use": "SPTB_CODE",
-        "subdivision": "SUBDIVISION"
+        "subdivision": "SUBDIVISION",
+        "exemptions": "EXEMPTIONS",
+        "use_code": "GUC"
       }
     }
   },
   "non_disclosure_states": {
     "_note": "States where sale prices are not public record. Assessed values and property characteristics are still available, but sold comps are not.",
-    "states": ["AK", "ID", "KS", "LA", "MS", "MO", "MT", "ND", "NM", "TX", "UT", "WY"]
+    "states": [
+      "AK",
+      "ID",
+      "KS",
+      "LA",
+      "MS",
+      "MO",
+      "MT",
+      "ND",
+      "NM",
+      "TX",
+      "UT",
+      "WY"
+    ]
   }
 }

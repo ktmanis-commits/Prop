@@ -179,7 +179,8 @@ def prefill(
     if geo and geo.get("county_fips"):
         try:
             parcel = pc.subject_property(geo["county_fips"], geo["latitude"],
-                                         geo["longitude"], geo["matched_address"])
+                                         geo["longitude"], geo["matched_address"],
+                                         geo.get("components"))
         except Exception:
             parcel = None
 
@@ -303,7 +304,8 @@ def parcel(
     try:
         report = pc.parcel_report(county_fips, lat, lon,
                                   (geo or {}).get("matched_address") or address,
-                                  (geo or {}).get("state"), (geo or {}).get("county"))
+                                  (geo or {}).get("state"), (geo or {}).get("county"),
+                                  (geo or {}).get("components"))
     except ds.DataUnavailable as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     if geo:

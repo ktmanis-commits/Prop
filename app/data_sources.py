@@ -10,6 +10,7 @@ DataUnavailable so the API can tell the client to fall back to manual input.
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -459,9 +460,27 @@ def geocode(address: str) -> dict:
 
     comp = m.get("addressComponents", {})
     county_fips = first("Counties", "GEOID")
+    matched = m.get("matchedAddress") or ""
+
+    # The house number must come from the matched address, not fromAddress —
+    # the latter is the start of the TIGER range (1100 for 1102).
+    number_match = re.match(r"^\s*(\d+)", matched)
+    # Lettered and numbered streets carry their designator in preType
+    # ("AVE H"), which county layers store as part of the street name. Dropping
+    # it turns Ave H into Ave Q.
+    street_name = " ".join(x for x in [(comp.get("preType") or "").strip(),
+                                       (comp.get("streetName") or "").strip()] if x)
     return {
         "query": address,
-        "matched_address": m.get("matchedAddress"),
+        "matched_address": matched,
+        "components": {
+            "number": number_match.group(1) if number_match else None,
+            "predirection": (comp.get("preDirection") or "").strip() or None,
+            "street_name": street_name or None,
+            "suffix": (comp.get("suffixType") or "").strip() or None,
+            "suffix_direction": (comp.get("suffixDirection") or "").strip() or None,
+            "city": (comp.get("city") or "").strip() or None,
+        },
         "latitude": m["coordinates"]["y"],
         "longitude": m["coordinates"]["x"],
         "zip": comp.get("zip"),

@@ -186,6 +186,89 @@ class TestShaping:
         assert out["address"] is None and out["market_value"] is None
 
 
+class TestAddressLayerMatching:
+    """Regression guard: an address layer must never return a different house.
+
+    'Ave H' and 'Ave Q' share a first word, and a city-scoped layer will happily
+    return a same-numbered address in a neighbouring town. Both once matched.
+    """
+
+    CFG = {
+        "urls": ["http://parcels"],
+        "fields": {"parcel_id": "PIN", "market_value": "TOTALVALUE"},
+        "value_basis": "market",
+        "address_layer": {"url": "http://addr", "number_field": "ADDR",
+                          "street_field": "STREET", "address_field": "FULL_ADDRESS",
+                          "join_field": "PIN", "parcel_join_field": "PIN",
+                          "city_field": "City"},
+    }
+    ROWS = [
+        {"ADDR": "1102", "STREET": "AVE Q", "FULL_ADDRESS": "1102 AVE Q", "City": "LUBBOCK", "PIN": "43598"},
+        {"ADDR": "1102", "STREET": "AVE B", "FULL_ADDRESS": "1102 AVE B", "City": "LUBBOCK", "PIN": "72626"},
+        {"ADDR": "1601", "STREET": "68TH", "FULL_ADDRESS": "1601 68TH ST", "City": "LUBBOCK", "PIN": "60322"},
+    ]
+
+    def _wire(self, monkeypatch):
+        """Serve the fake address rows, honouring the WHERE clause literally."""
+        from app import parcels
+        seen = {}
+        def fake(url, params):
+            where = params.get("where", "")
+            seen[url] = where          # keyed by layer; the parcel join runs second
+            if url == "http://addr":
+                out = []
+                for r in self.ROWS:
+                    if (f"ADDR='{r['ADDR']}'" in where
+                            and f"UPPER(STREET)='{r['STREET']}'" in where
+                            and (f"UPPER(City)='{r['City']}'" in where or "City" not in where)):
+                        out.append(r)
+                return out
+            return [{"PIN": "43598", "TOTALVALUE": 1071661}]
+        monkeypatch.setattr(parcels, "_query", fake)
+        return seen
+
+    def test_exact_street_matches(self, monkeypatch):
+        from app import parcels
+        self._wire(monkeypatch)
+        got = parcels._resolve_via_address_layer(self.CFG, {
+            "number": "1102", "street_name": "AVE Q", "city": "LUBBOCK"})
+        assert got and got["address"] == "1102 AVE Q"
+
+    def test_a_different_letter_is_not_a_match(self, monkeypatch):
+        """'Ave H' must not resolve to 'Ave Q'."""
+        from app import parcels
+        self._wire(monkeypatch)
+        assert parcels._resolve_via_address_layer(self.CFG, {
+            "number": "1102", "street_name": "AVE H", "city": "LUBBOCK"}) is None
+
+    def test_a_different_city_is_not_a_match(self, monkeypatch):
+        from app import parcels
+        self._wire(monkeypatch)
+        assert parcels._resolve_via_address_layer(self.CFG, {
+            "number": "1102", "street_name": "AVE Q", "city": "SHALLOWATER"}) is None
+
+    def test_the_city_filter_reaches_the_query(self, monkeypatch):
+        from app import parcels
+        seen = self._wire(monkeypatch)
+        parcels._resolve_via_address_layer(self.CFG, {
+            "number": "1601", "street_name": "68TH", "city": "LUBBOCK"})
+        assert "UPPER(City)='LUBBOCK'" in seen["http://addr"]
+        assert "UPPER(STREET)='68TH'" in seen["http://addr"]
+
+    def test_incomplete_components_resolve_to_nothing(self, monkeypatch):
+        from app import parcels
+        self._wire(monkeypatch)
+        for comps in ({}, None, {"number": "1102"}, {"street_name": "AVE Q"}):
+            assert parcels._resolve_via_address_layer(self.CFG, comps) is None
+
+    def test_quotes_in_a_street_name_cannot_break_the_query(self, monkeypatch):
+        from app import parcels
+        seen = self._wire(monkeypatch)
+        parcels._resolve_via_address_layer(self.CFG, {
+            "number": "1", "street_name": "O'HARE", "city": "LUBBOCK"})
+        assert "O''HARE" in seen["http://addr"], "single quotes must be escaped, not injected"
+
+
 class TestTaxAndCondition:
     cfg = {
         "fields": {"address": "addr", "market_value": "val", "annual_tax": "tax",
@@ -319,8 +402,25 @@ class TestLiveParcels:
         assert d["provenance"]["purchase_price"] == "your asking price"
 
     def test_unconfigured_county_explains_itself(self):
-        d = client.get("/api/parcel", params={"address": "1500 Broadway, Lubbock, TX"}).json()
+        # Ford County, KS: no adapter, and Kansas also withholds sale prices.
+        d = client.get("/api/parcel", params={"address": "806 N 2nd Ave, Dodge City, KS"}).json()
         assert d["supported"] is False
         assert d["reason"] == "no_adapter"
-        assert d["non_disclosure_state"] is True, "Texas withholds sale prices"
+        assert d["non_disclosure_state"] is True, "Kansas withholds sale prices"
         assert "county" in d["note"].lower()
+
+    def test_lubbock_resolves_through_its_address_layer(self):
+        d = client.get("/api/parcel", params={"address": "1601 68th St, Lubbock, TX 79412"}).json()
+        s = d["subject"]
+        assert s["match"] == "address"
+        assert s["address"].upper().startswith("1601 68TH")
+        assert s["market_value"] > 0
+        assert s["land_value"] and s["building_value"]
+        # Texas: no sale prices anywhere.
+        assert s["last_sale_price"] is None
+        assert d["comps"]["reason"] == "non_disclosure_state"
+
+    def test_lubbock_does_not_return_a_neighbouring_letter_street(self):
+        """The 'Ave H matched Ave Q' bug, against the live service."""
+        d = client.get("/api/parcel", params={"address": "1102 Ave H, Shallowater, TX 79363"}).json()
+        assert d.get("subject") is None, "an out-of-coverage address must return no parcel"

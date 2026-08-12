@@ -168,6 +168,10 @@ def _shape(attrs: dict, cfg: dict) -> dict:
         "land_use": (cfg.get("land_use_codes", {}).get(str(get("land_use")).strip())
                      or get("land_use")),
         "land_use_code": get("land_use"),
+        # Texas caps annual appraisal growth at 10% for homesteaded owners. An
+        # investor buyer loses that cap and is reappraised at the sale price, so
+        # a homesteaded parcel's current value understates the tax they'll pay.
+        "exemptions": (str(get("exemptions")).strip() or None) if get("exemptions") else None,
         "legal_description": get("legal_description"),
         "subdivision": get("subdivision"),
         "zoning": get("zoning"),
@@ -213,29 +217,52 @@ def _radius_query(cfg: dict, lon: float, lat: float, radius_m: int,
 
 # ------------------------------------------------------------- public API
 
-def _resolve_via_address_layer(cfg: dict, address: str) -> dict | None:
+def _sql_quote(value: str) -> str:
+    return str(value).replace("'", "''")
+
+
+def _resolve_via_address_layer(cfg: dict, components: dict | None) -> dict | None:
     """Some counties keep situs addresses in a separate points layer, joined to
     the parcel by a key. Where they do, that join is exact — far better than
-    guessing from a street-centerline coordinate."""
+    guessing from a street-centerline coordinate.
+
+    Matching is on the *whole* street name and the city. Both matter: "Ave H"
+    and "Ave Q" share a first word, and a city-scoped layer will happily return
+    a same-numbered address in the wrong town. A candidate that does not match
+    exactly is discarded — returning no parcel is correct, returning someone
+    else's house is not.
+    """
     al = cfg.get("address_layer")
-    if not al or not address:
+    if not al or not components:
         return None
-    number, street = _street_key(address)
-    if not number:
+    number, street = components.get("number"), components.get("street_name")
+    if not number or not street:
         return None
-    # Match on house number and street name, which is all the two layers reliably share.
-    where = (f"{al['number_field']}='{number}' AND "
-             f"UPPER({al['street_field']}) LIKE '{street.replace(chr(39), chr(39) * 2)}%'")
+
+    clauses = [f"{al['number_field']}='{_sql_quote(number)}'",
+               f"UPPER({al['street_field']})='{_sql_quote(street.upper())}'"]
+    city = components.get("city")
+    if city and al.get("city_field"):
+        clauses.append(f"UPPER({al['city_field']})='{_sql_quote(city.upper())}'")
+    out = [al["join_field"], al["address_field"]] + ([al["city_field"]] if al.get("city_field") else [])
     try:
-        hits = _query(al["url"], {"where": where, "outFields": f"{al['join_field']},{al['address_field']}",
-                                 "resultRecordCount": "5"})
+        hits = _query(al["url"], {"where": " AND ".join(clauses),
+                                  "outFields": ",".join(out), "resultRecordCount": "5"})
     except DataUnavailable:
         return None
     if not hits:
         return None
-    key = hits[0].get(al["join_field"])
+
+    # Belt and braces: confirm the row we got back really is this address.
+    want = f"{number} {street}".upper()
+    confirmed = [h for h in hits
+                 if normalize_address(h.get(al["address_field"])).startswith(normalize_address(want))]
+    if not confirmed:
+        return None
+    key = confirmed[0].get(al["join_field"])
     if key in (None, ""):
         return None
+    hits = confirmed
     quoted = f"'{key}'" if isinstance(key, str) else str(key)
     out_fields = ",".join(sorted({v for v in cfg["fields"].values() if v}))
     try:
@@ -254,13 +281,14 @@ def _resolve_via_address_layer(cfg: dict, address: str) -> dict | None:
 
 
 def subject_property(county_fips: str, lat: float, lon: float,
-                     address: str | None = None) -> dict | None:
+                     address: str | None = None,
+                     components: dict | None = None) -> dict | None:
     """The parcel at this address. Searches outward until the address matches."""
     cfg = source_for(county_fips)
     if not cfg:
         return None
 
-    exact = _resolve_via_address_layer(cfg, address or "")
+    exact = _resolve_via_address_layer(cfg, components)
     if exact:
         exact["source"] = cfg.get("attribution")
         exact["county"] = f"{cfg['county']}, {cfg['state']}"
@@ -451,7 +479,8 @@ def discover_candidates(county: str | None, state: str | None, limit: int = 6) -
 
 
 def parcel_report(county_fips: str, lat: float, lon: float, address: str | None,
-                  state: str | None = None, county_name: str | None = None) -> dict:
+                  state: str | None = None, county_name: str | None = None,
+                  components: dict | None = None) -> dict:
     """Subject parcel plus comps, or an explanation of why neither is available."""
     cfg = source_for(county_fips)
     if not cfg:
@@ -466,7 +495,7 @@ def parcel_report(county_fips: str, lat: float, lon: float, address: str | None,
             "candidate_layers": discover_candidates(county_name, state),
         }
     try:
-        subject = subject_property(county_fips, lat, lon, address)
+        subject = subject_property(county_fips, lat, lon, address, components)
     except DataUnavailable as exc:
         return {
             "supported": True,
