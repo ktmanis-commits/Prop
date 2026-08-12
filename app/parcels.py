@@ -136,9 +136,19 @@ def _shape(attrs: dict, cfg: dict) -> dict:
     sale_price = float(sale_price) if sale_price not in (None, 0) else None
     living = get("living_area")
     living = float(living) if living not in (None, 0) else None
+    annual_tax = get("annual_tax")
+    annual_tax = float(annual_tax) if annual_tax not in (None, 0) else None
+    flag = get("foreclosure_flag")
 
     return {
         "parcel_id": get("parcel_id"),
+        "annual_tax": round(annual_tax, 2) if annual_tax else None,
+        # The tax actually billed on this parcel, as a percent of its market
+        # value. This is the real number a statewide average only approximates.
+        "effective_tax_rate_pct": (round(annual_tax / market * 100, 3)
+                                   if annual_tax and market else None),
+        "year_built": (int(get("year_built")) if get("year_built") not in (None, 0) else None),
+        "in_foreclosure": bool(flag) and str(flag).strip() not in ("", "0", "N", "None"),
         "address": (str(get("address")) if get("address") else None),
         "city": get("city"),
         "zip": str(get("zip")) if get("zip") else None,
@@ -175,11 +185,19 @@ def _radius_query(cfg: dict, lon: float, lat: float, radius_m: int,
         "resultRecordCount": str(limit),
     }
     rows: list[dict] = []
+    failures = 0
     for url in cfg["urls"]:
         try:
             rows.extend(_shape(a, cfg) for a in _query(url, params))
         except DataUnavailable:
-            continue  # one layer of a multi-layer county being down is survivable
+            failures += 1  # one layer of a multi-layer county being down is survivable
+    if failures == len(cfg["urls"]):
+        # Every layer failed. County GIS servers go down for maintenance and
+        # answer with HTTP 200 carrying a 500 in the body; reporting that as
+        # "no sales found" would be a silent, confident lie.
+        raise DataUnavailable(
+            f"{cfg['county']}'s parcel service is not responding. This is the county's "
+            "own GIS server, which goes offline periodically — try again later.")
     return rows
 
 
@@ -193,7 +211,7 @@ def subject_property(county_fips: str, lat: float, lon: float,
         return None
     want = _street_key(address)
     for radius in (40, 100, 200):
-        rows = _radius_query(cfg, lon, lat, radius)
+        rows = _radius_query(cfg, lon, lat, radius)  # raises if the county is down
         if not rows:
             continue
         if want != ("", ""):
@@ -268,13 +286,21 @@ def nearby_sales(county_fips: str, lat: float, lon: float, subject: dict | None 
         }
 
     where = cfg.get("residential_where") or "1=1"
-    rows = _radius_query(cfg, lon, lat, radius_m, where=where)
+    try:
+        rows = _radius_query(cfg, lon, lat, radius_m, where=where)
+    except DataUnavailable as exc:
+        return {"available": False, "reason": "source_unavailable", "comps": [], "note": str(exc)}
     cutoff = date.today().replace(year=date.today().year - years).isoformat()
     subject_area = (subject or {}).get("living_area")
 
-    comps = []
+    comps, foreclosures = [], 0
     for r in rows:
         if not r.get("last_sale_price") or r["last_sale_price"] < min_price:
+            continue
+        if r.get("in_foreclosure"):
+            # Where the county flags it, a distressed sale is excluded outright
+            # rather than left for the outlier trim to catch by accident.
+            foreclosures += 1
             continue
         if not r.get("last_sale_date") or r["last_sale_date"] < cutoff:
             continue
@@ -298,6 +324,7 @@ def nearby_sales(county_fips: str, lat: float, lon: float, subject: dict | None 
         "years": years,
         "considered": len(rows),
         "qualifying": len(comps),
+        "foreclosures_excluded": foreclosures,
         "source": cfg.get("attribution"),
     }
     if not comps:
@@ -325,9 +352,12 @@ def nearby_sales(county_fips: str, lat: float, lon: float, subject: dict | None 
     result["outliers_excluded"] = len(dropped)
     result["dispersion_note"] = (
         f"Sale prices per square foot among these {len(kept)} sales run from "
-        f"${psf[0]:,.0f} to ${psf[-1]:,.0f}. Public records cannot distinguish an "
-        "arm's-length sale from a foreclosure, family transfer or post-renovation flip, "
-        "so treat the median as a starting point and read the individual sales."
+        f"${psf[0]:,.0f} to ${psf[-1]:,.0f}. "
+        + (f"{foreclosures} sales the county flags as foreclosures were excluded. "
+           if foreclosures else "")
+        + "Public records still cannot distinguish an arm's-length sale from a family "
+          "transfer or a post-renovation flip, so treat the median as a starting point "
+          "and read the individual sales."
         + (f" {len(dropped)} extreme sales were excluded from the median." if dropped else ""))
 
     if subject_area:
@@ -378,10 +408,24 @@ def parcel_report(county_fips: str, lat: float, lon: float, address: str | None,
             "non_disclosure_state": is_non_disclosure(state),
             "candidate_layers": discover_candidates(county_name, state),
         }
-    subject = subject_property(county_fips, lat, lon, address)
+    try:
+        subject = subject_property(county_fips, lat, lon, address)
+    except DataUnavailable as exc:
+        return {
+            "supported": True,
+            "county_fips": county_fips,
+            "county": f"{cfg['county']}, {cfg['state']}",
+            "source": cfg.get("attribution"),
+            "available": False,
+            "reason": "source_unavailable",
+            "note": str(exc),
+            "subject": None,
+            "comps": {"available": False, "reason": "source_unavailable", "comps": []},
+        }
     comps = nearby_sales(county_fips, lat, lon, subject)
     return {
         "supported": True,
+        "available": True,
         "county_fips": county_fips,
         "county": f"{cfg['county']}, {cfg['state']}",
         "source": cfg.get("attribution"),

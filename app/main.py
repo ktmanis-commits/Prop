@@ -210,6 +210,15 @@ def prefill(
     rent_growth = (mkt["rent"]["cagr_5y"] if mkt.get("rent") else None)
     rent_growth = 3.0 if rent_growth is None else max(0.0, min(5.0, rent_growth))
 
+    # The tax actually billed on this parcel beats a statewide average, which
+    # can be off by half: Cuyahoga bills 2.34% where Ohio averages 1.53%.
+    parcel_tax_rate = (parcel or {}).get("effective_tax_rate_pct") if parcel_value else None
+    tax_rate = parcel_tax_rate or mkt["tax"]["effective_rate_pct"]
+    tax_basis = (
+        f"{parcel['county']} billed {parcel['annual_tax']:,.0f} on this parcel in "
+        f"tax year {parcel.get('tax_year')} — {parcel_tax_rate}% of its market value"
+        if parcel_tax_rate else mkt["tax"]["note"])
+
     return {
         "geocode": geo,
         "tract_hpi": tract,
@@ -219,7 +228,7 @@ def prefill(
             "purchase_price": round(use_price),
             "monthly_rent": rent_estimate,
             "interest_rate_pct": rate,
-            "property_tax_rate_pct": mkt["tax"]["effective_rate_pct"],
+            "property_tax_rate_pct": tax_rate,
             "annual_appreciation_pct": appreciation,
             "annual_rent_growth_pct": round(rent_growth, 2),
         },
@@ -228,7 +237,7 @@ def prefill(
             "rent": (f"Zillow ZORI ({mkt['rent']['level']}-level), {mkt['rent']['as_of']}"
                      if mkt.get("rent") else "unavailable"),
             "mortgage_rate": f"FRED MORTGAGE30US, {rate_as_of}" if rate_as_of else "default (FRED unavailable)",
-            "property_tax": mkt["tax"]["note"],
+            "property_tax": tax_basis,
             "appreciation": appreciation_basis,
             "purchase_price": (
                 "your asking price" if price and price > 0 else

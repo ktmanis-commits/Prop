@@ -1,0 +1,1121 @@
+<title>Property Investment Analyzer</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ground: #f9f9f7;
+    --surface: #fcfcfb;
+    --field: #ffffff;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --ink-3: #898781;
+    --rule: #e1e0d9;
+    --axis: #c3c2b7;
+    --edge: rgba(11,11,11,0.10);
+    --s1: #2a78d6;
+    --s2: #eb6834;
+    --s3: #1baf7a;
+    --good: #0ca30c;
+    --warn: #fab219;
+    --bad: #d03b3b;
+    --good-ink: #006300;
+    --div-mid: #f0efec;
+    --div-pos: #1c5cab;
+    --div-neg: #b52f2f;
+    --lift: 0 1px 2px rgba(11,11,11,0.04);
+    --note: #fdf8ec;
+    --note-edge: #e8dcbd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #0d0d0d;
+      --surface: #1a1a19;
+      --field: #232322;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --ink-3: #898781;
+      --rule: #2c2c2a;
+      --axis: #383835;
+      --edge: rgba(255,255,255,0.10);
+      --s1: #3987e5;
+      --s2: #d95926;
+      --s3: #199e70;
+      --good-ink: #0ca30c;
+      --div-mid: #383835;
+      --div-pos: #86b6ef;
+      --div-neg: #e88585;
+      --lift: none;
+      --note: #221d12;
+      --note-edge: #443a22;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #0d0d0d;
+    --surface: #1a1a19;
+    --field: #232322;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-3: #898781;
+    --rule: #2c2c2a;
+    --axis: #383835;
+    --edge: rgba(255,255,255,0.10);
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --good-ink: #0ca30c;
+    --div-mid: #383835;
+    --div-pos: #86b6ef;
+    --div-neg: #e88585;
+    --lift: none;
+    --note: #221d12;
+    --note-edge: #443a22;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { text-wrap: balance; }
+
+  .snapshot {
+    display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+    background: var(--note); border-bottom: 1px solid var(--note-edge);
+    padding: 10px 24px; font-size: 12.5px; color: var(--ink-2);
+  }
+  .snapshot strong { color: var(--ink); font-weight: 600; }
+
+  header { padding: 22px 24px 18px; border-bottom: 1px solid var(--edge); background: var(--surface); }
+  header h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+  header p { margin: 5px 0 0; color: var(--ink-2); font-size: 13.5px; max-width: 74ch; }
+
+  /* one control row above everything it scopes */
+  .switcher {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 13px 24px; background: var(--surface); border-bottom: 1px solid var(--edge);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .switcher .eyebrow {
+    font-size: 11.5px; color: var(--ink-3); font-weight: 550;
+    text-transform: uppercase; letter-spacing: .04em; margin-right: 2px;
+  }
+  .seg { display: flex; border: 1px solid var(--edge); border-radius: 8px; overflow: hidden; }
+  .seg button {
+    font: inherit; font-size: 13px; font-weight: 550; cursor: pointer;
+    background: transparent; color: var(--ink-2); border: 0;
+    border-right: 1px solid var(--edge); padding: 7px 13px; text-align: left; line-height: 1.25;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button span { display: block; font-size: 11px; font-weight: 400; color: var(--ink-3); }
+  .seg button[aria-pressed="true"] { background: var(--s1); color: #fff; }
+  .seg button[aria-pressed="true"] span { color: rgba(255,255,255,.82); }
+  .seg button:hover:not([aria-pressed="true"]) { background: var(--rule); }
+  .matched { font-size: 12.5px; color: var(--ink-3); }
+  .matched b { color: var(--ink-2); font-weight: 550; }
+
+  main { display: grid; grid-template-columns: 320px minmax(0,1fr); gap: 20px; padding: 20px 24px 64px; align-items: start; }
+  @media (max-width: 960px) { main { grid-template-columns: minmax(0,1fr); } }
+  @media (max-width: 560px) {
+    main { padding: 14px 12px 44px; gap: 14px; }
+    header, .switcher, .snapshot { padding-left: 14px; padding-right: 14px; }
+    .card { padding: 14px; }
+    .hero .fig { font-size: 40px; }
+  }
+
+  aside { position: sticky; top: 68px; }
+  @media (max-width: 960px) { aside { position: static; } }
+
+  .card { background: var(--surface); border: 1px solid var(--edge); border-radius: 12px; padding: 16px 18px; box-shadow: var(--lift); }
+  .card + .card { margin-top: 16px; }
+  .card h2 { margin: 0 0 2px; font-size: 14px; font-weight: 620; letter-spacing: -0.005em; }
+  .card .sub { margin: 0 0 14px; font-size: 12.5px; color: var(--ink-3); }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+
+  fieldset { border: 0; padding: 0; margin: 0 0 15px; }
+  legend { font-size: 11.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; padding: 0 0 8px; }
+  .row { display: grid; grid-template-columns: minmax(0,1fr) 104px; gap: 8px; align-items: center; margin-bottom: 7px; }
+  .row label { font-size: 13px; color: var(--ink-2); }
+  input {
+    font: inherit; color: var(--ink); background: var(--field);
+    border: 1px solid var(--edge); border-radius: 7px; padding: 5px 8px;
+    width: 100%; text-align: right; font-variant-numeric: tabular-nums;
+  }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--s1); outline-offset: 1px; }
+  .hint { font-size: 11.5px; color: var(--ink-3); margin: -3px 0 9px; }
+  .hint.flag { color: var(--s2); }
+  .reset {
+    font: inherit; font-size: 12.5px; font-weight: 550; cursor: pointer; width: 100%;
+    background: transparent; color: var(--ink-2); border: 1px solid var(--edge);
+    border-radius: 7px; padding: 7px 12px;
+  }
+  .reset:hover { background: var(--rule); }
+
+  .verdict { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .hero { min-width: 195px; }
+  .hero .label { font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; font-weight: 550; }
+  .hero .fig { font-size: 52px; font-weight: 640; line-height: 1.05; letter-spacing: -0.02em; margin-top: 2px; }
+  .hero .cap { font-size: 14px; color: var(--ink-2); margin-top: 2px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 580; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--edge); margin-top: 10px; }
+  .pill .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  ul.reasons { margin: 0; padding: 0; list-style: none; flex: 1; min-width: 265px; }
+  ul.reasons li { position: relative; padding-left: 20px; margin-bottom: 8px; font-size: 13.5px; color: var(--ink-2); }
+  ul.reasons li::before { content: ""; position: absolute; left: 4px; top: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--icon, var(--ink-3)); }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 1px; background: var(--edge); border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; margin-top: 16px; }
+  .tile { background: var(--surface); padding: 13px 15px; }
+  .tile .k { font-size: 11.5px; color: var(--ink-3); font-weight: 550; text-transform: uppercase; letter-spacing: .03em; }
+  .tile .v { font-size: 25px; font-weight: 620; letter-spacing: -0.015em; margin-top: 3px; }
+  .tile .d { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--rule); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; font-variant-numeric: normal; }
+  thead th { font-size: 11.5px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid var(--axis); }
+  tr.total td { font-weight: 620; border-top: 1px solid var(--axis); border-bottom: none; }
+  tr.sub td:first-child { padding-left: 22px; color: var(--ink-2); }
+  tr.spacer td { border: 0; height: 6px; padding: 0; }
+  tr.dim td { opacity: .5; }
+  td .tag { font-size: 11px; color: var(--ink-3); }
+  .neg { color: var(--bad); }
+  .scroll { overflow-x: auto; }
+
+  .chart-wrap { position: relative; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 10px; font-size: 12.5px; color: var(--ink-2); }
+  .legend .item { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .key { width: 14px; height: 3px; border-radius: 2px; flex: none; }
+  .tip { position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s; background: var(--surface); border: 1px solid var(--edge); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.13); white-space: nowrap; z-index: 10; color: var(--ink); }
+  .tip .th { font-weight: 600; margin-bottom: 5px; }
+  .tip .tr { display: flex; align-items: center; gap: 7px; justify-content: space-between; }
+  .tip .tr span:last-child { font-variant-numeric: tabular-nums; font-weight: 550; }
+  .tip .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; margin-right: 2px; }
+  .toggle { display: flex; border: 1px solid var(--edge); border-radius: 7px; overflow: hidden; }
+  .toggle button { font: inherit; background: transparent; color: var(--ink-2); border: 0; padding: 4px 11px; font-size: 12.5px; font-weight: 550; cursor: pointer; }
+  .toggle button[aria-pressed="true"] { background: var(--s1); color: #fff; }
+
+  .heat { border-collapse: separate; border-spacing: 2px; font-size: 12.5px; }
+  .heat td, .heat th { border: 0; padding: 0; }
+  .heat th { font-size: 11.5px; color: var(--ink-3); font-weight: 600; padding: 3px 6px; }
+  .heat td.cell { border-radius: 5px; text-align: center; padding: 9px 6px; font-variant-numeric: tabular-nums; font-weight: 550; min-width: 76px; }
+
+  .vbars { display: flex; flex-direction: column; gap: 7px; }
+  .vrow { display: grid; grid-template-columns: 152px minmax(70px,1fr) 96px 150px; gap: 12px; align-items: center; }
+  @media (max-width: 780px) { .vrow { grid-template-columns: 128px minmax(50px,1fr) 88px; } .vrow .vn { display: none; } }
+  .vk { font-size: 13px; color: var(--ink-2); }
+  .vrow.me .vk { color: var(--ink); font-weight: 580; }
+  .vtrack { height: 14px; background: var(--rule); border-radius: 4px; overflow: hidden; }
+  .vfill { display: block; height: 100%; background: var(--s1); border-radius: 0 4px 4px 0; }
+  .vrow.me .vfill { background: var(--s3); }
+  .vv { font-size: 13.5px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .vn { font-size: 11.5px; color: var(--ink-3); }
+  .tag-pill { font-size: 11.5px; color: var(--ink-3); border: 1px solid var(--edge); border-radius: 999px; padding: 3px 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  ul.findings { list-style: none; margin: 14px 0 0; padding: 0; }
+  ul.findings li { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--rule); }
+  ul.findings li:last-child { border-bottom: 0; }
+  .fg { flex: none; width: 15px; text-align: center; font-size: 12px; line-height: 1.5; }
+  .fb { display: grid; grid-template-columns: 172px 130px minmax(0,1fr); gap: 10px; align-items: baseline; flex: 1; }
+  @media (max-width: 780px) { .fb { grid-template-columns: 1fr; gap: 2px; } }
+  .fsig { font-size: 13.5px; font-weight: 580; }
+  .fval { font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .ftxt { font-size: 13px; color: var(--ink-2); }
+
+  .smalls { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px,1fr)); gap: 16px; }
+  .small .st { font-size: 12.5px; color: var(--ink-2); font-weight: 550; margin-bottom: 4px; }
+
+  table.bench { border-collapse: separate; border-spacing: 2px; }
+  table.bench th { text-align: left; font-size: 12.5px; font-weight: 580; color: var(--ink); padding: 8px 12px 8px 0; border: 0; vertical-align: middle; white-space: nowrap; }
+  table.bench th .bs { display: block; font-size: 11.5px; color: var(--ink-3); font-weight: 400; }
+  table.bench td { border: 0; padding: 0; }
+  table.bench td.cell { background: var(--field); border: 1px solid var(--edge); border-radius: 8px; padding: 8px 12px; text-align: center; min-width: 90px; }
+  table.bench td.cell.wide { min-width: 134px; }
+  table.bench .bk { display: block; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .03em; }
+  table.bench .bv { display: block; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  table.bench td.note { font-size: 12.5px; color: var(--ink-2); padding-left: 12px; text-align: left; }
+
+  .sources { margin-top: 16px; font-size: 12px; color: var(--ink-3); padding-left: 18px; }
+  .sources li { margin-bottom: 3px; }
+  .disclaim { margin-top: 10px; font-size: 12px; color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 10px; }
+  code { font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink-2); word-break: break-all; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="snapshot">
+  <strong>Live demo, frozen data.</strong>
+  <span>Every figure was pulled from public sources on <b id="snap-date">12 August 2026</b> and baked into this page. The underwriting is fully live — change any assumption and everything recalculates. The real app looks up any US address on demand.</span>
+</div>
+
+<header>
+  <h1>Property Investment Analyzer</h1>
+  <p>Underwrite a residential rental in seconds. Public housing data, mortgage rates, county assessor records and recorded sold comps, assembled into one verdict — with the reasoning shown, not just a score.</p>
+</header>
+
+<div class="switcher">
+  <span class="eyebrow">Property</span>
+  <div class="seg" id="seg" role="group" aria-label="Choose a property"></div>
+  <span class="matched" id="matched"></span>
+</div>
+
+<main>
+  <aside>
+    <div class="card">
+      <h2>Deal inputs</h2>
+      <p class="sub">Every figure is editable. Results update as you type.</p>
+      <form id="form"></form>
+      <button type="button" class="reset" id="reset">Reset to the data's defaults</button>
+    </div>
+  </aside>
+  <section id="results"></section>
+</main>
+
+<script>
+"use strict";
+
+const DATA = {"properties":[{"id":"caine","label":"13301 Caine Ave","sub":"Cleveland, OH 44105","geocode":{"matched_address":"13301 CAINE AVE, CLEVELAND, OH, 44105","city":"Cleveland","state":"OH","zip":"44105","county":"Cuyahoga County","county_fips":"39035","tract":"39035121403","source":"US Census Bureau Geocoder (Public_AR_Current)"},"tract_hpi":null,"parcel":{"parcel_id":"13817136","annual_tax":1592.06,"effective_tax_rate_pct":2.341,"year_built":1920,"in_foreclosure":false,"address":"13301 CAINE AVE, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"WASSIL, JUSTIN","market_value":68000,"land_value":9800,"building_value":58200,"living_area":1470.0,"rooms":7,"lot_acres":0.1271,"land_use":"1-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":67995.0,"last_sale_date":"2022-09-07","tax_year":2025,"value_per_sqft":46.26,"match":"address","source":"Cuyahoga County Fiscal Office, parcel fabric tax parcels","county":"Cuyahoga County, OH"},"suggested_inputs":{"purchase_price":68000,"monthly_rent":1091,"interest_rate_pct":6.69,"property_tax_rate_pct":2.341,"annual_appreciation_pct":5.0,"annual_rent_growth_pct":3.0},"provenance":{"home_value":"Zillow ZHVI, 2026-06-30","rent":"Zillow ZORI (zip-level), 2026-06-30","mortgage_rate":"FRED MORTGAGE30US, 2026-08-06","property_tax":"Cuyahoga County, OH billed 1,592 on this parcel in tax year 2025 \u2014 2.341% of its market value","appreciation":"10-year trailing CAGR (6.32%) capped to a defensible forward assumption","purchase_price":"Cuyahoga County, OH assessor market value, tax year 2025"},"market":{"city":"Cleveland","state":"OH","zip":"44105","price_to_rent":5.4,"tax":{"state":"OH","effective_rate_pct":1.53,"is_estimate":true,"note":"Statewide average effective rate \u2014 county rates vary; verify locally."},"source":"Zillow Research ZHVI / ZORI (public CSVs)","home_value":{"latest":79452.93,"as_of":"2026-06-30","cagr_1y":-3.39,"cagr_5y":3.08,"cagr_10y":6.32,"history":{"dates":["2015-07-31","2015-08-31","2015-09-30","2015-10-31","2015-11-30","2015-12-31","2016-01-31","2016-02-29","2016-03-31","2016-04-30","2016-05-31","2016-06-30","2016-07-31","2016-08-31","2016-09-30","2016-10-31","2016-11-30","2016-12-31","2017-01-31","2017-02-28","2017-03-31","2017-04-30","2017-05-31","2017-06-30","2017-07-31","2017-08-31","2017-09-30","2017-10-31","2017-11-30","2017-12-31","2018-01-31","2018-02-28","2018-03-31","2018-04-30","2018-05-31","2018-06-30","2018-07-31","2018-08-31","2018-09-30","2018-10-31","2018-11-30","2018-12-31","2019-01-31","2019-02-28","2019-03-31","2019-04-30","2019-05-31","2019-06-30","2019-07-31","2019-08-31","2019-09-30","2019-10-31","2019-11-30","2019-12-31","2020-01-31","2020-02-29","2020-03-31","2020-04-30","2020-05-31","2020-06-30","2020-07-31","2020-08-31","2020-09-30","2020-10-31","2020-11-30","2020-12-31","2021-01-31","2021-02-28","2021-03-31","2021-04-30","2021-05-31","2021-06-30","2021-07-31","2021-08-31","2021-09-30","2021-10-31","2021-11-30","2021-12-31","2022-01-31","2022-02-28","2022-03-31","2022-04-30","2022-05-31","2022-06-30","2022-07-31","2022-08-31","2022-09-30","2022-10-31","2022-11-30","2022-12-31","2023-01-31","2023-02-28","2023-03-31","2023-04-30","2023-05-31","2023-06-30","2023-07-31","2023-08-31","2023-09-30","2023-10-31","2023-11-30","2023-12-31","2024-01-31","2024-02-29","2024-03-31","2024-04-30","2024-05-31","2024-06-30","2024-07-31","2024-08-31","2024-09-30","2024-10-31","2024-11-30","2024-12-31","2025-01-31","2025-02-28","2025-03-31","2025-04-30","2025-05-31","2025-06-30","2025-07-31","2025-08-31","2025-09-30","2025-10-31","2025-11-30","2025-12-31","2026-01-31","2026-02-28","2026-03-31","2026-04-30","2026-05-31","2026-06-30"],"values":[36467.36,36984.79,37388.83,37958.11,39001.87,40096.16,40802.04,41304.02,41660.54,42232.68,42550.54,43057.11,43175.96,43562.09,43647.98,43720.43,43601.66,43493.06,43731.97,44167.76,44640.53,44627.31,44028.1,42925.46,42192.74,42045.77,42304.63,42972.07,43486.33,43836.59,43662.8,43607.35,44079.69,44822.8,45497.55,45548.37,45616.05,45715.97,46240.34,46823.28,47447.05,48084.09,48537.13,49093.13,49395.64,49476.01,49395.65,49367.0,49527.32,49749.67,50046.31,50177.03,49962.42,49868.32,50216.02,50854.3,51559.84,51926.97,51814.41,50963.09,50313.76,50544.63,51955.79,54050.51,56418.12,58697.32,60680.6,62327.65,63955.43,65358.32,66897.99,68277.78,69384.38,70096.06,70206.77,70174.91,69972.48,69993.48,70599.14,71843.75,73304.14,74371.45,75050.97,76003.9,76639.04,76282.87,75253.27,74495.84,74332.1,73513.03,71784.96,69994.94,68673.65,68110.9,67986.45,67885.72,68217.09,68447.78,68993.13,69295.09,69812.75,70417.12,71287.37,72281.98,73467.04,74790.73,76121.23,77525.97,78830.48,80057.26,80797.26,81182.79,81110.42,81275.75,81389.89,81499.6,81625.95,81842.55,82042.42,82237.62,82118.03,81725.56,81214.66,80400.38,79576.58,78764.74,78443.22,78643.38,78759.88,78902.53,79020.2,79452.93]}},"rent":{"latest":1216.35,"as_of":"2026-06-30","cagr_1y":2.99,"cagr_5y":null,"level":"zip","history":{"dates":["2022-02-28","2022-03-31","2022-04-30","2022-05-31","2022-06-30","2022-07-31","2022-08-31","2022-09-30","2022-10-31","2022-11-30","2022-12-31","2023-01-31","2023-02-28","2023-03-31","2023-04-30","2023-05-31","2023-06-30","2023-07-31","2023-08-31","2023-09-30","2023-10-31","2023-11-30","2023-12-31","2024-01-31","2024-02-29","2024-03-31","2024-04-30","2024-05-31","2024-06-30","2024-07-31","2024-08-31","2024-09-30","2024-10-31","2024-11-30","2024-12-31","2025-01-31","2025-02-28","2025-03-31","2025-04-30","2025-05-31","2025-06-30","2025-07-31","2025-08-31","2025-09-30","2025-10-31","2025-11-30","2025-12-31","2026-01-31","2026-02-28","2026-03-31","2026-04-30","2026-05-31","2026-06-30"],"values":[840.54,846.17,861.61,847.63,855.95,855.37,852.91,854.13,861.89,888.79,896.55,890.35,885.21,905.15,941.24,934.4,930.79,943.04,957.63,947.29,949.91,973.37,1005.0,1015.46,1028.08,1050.64,1070.94,1080.57,1063.96,1058.23,1074.25,1100.13,1110.35,1089.36,1106.47,1108.14,1117.83,1130.02,1155.72,1171.1,1181.05,1164.03,1160.58,1152.96,1176.76,1196.22,1193.0,1178.24,1193.79,1206.6,1197.78,1203.83,1216.35]}}},"fundamentals":{"county":"Cuyahoga County","state":"OH","score":52,"label":"Mixed","findings":[{"signal":"Job growth","value":"-1.7% year over year","verdict":"bad","text":"Employment fell 1.7% over the past year, which pressures both rents and vacancy."},{"signal":"Population","value":"-0.5%/yr since 2020","verdict":"bad","text":"The county has been losing population at 0.5%/yr since 2020, down to 1,232,925. A shrinking tenant pool is the hardest headwind to underwrite around."},{"signal":"Migration","value":"-3.4 per 1,000","verdict":"bad","text":"Census measures net domestic migration of -3.4 per 1,000 county residents \u00b7 U-Haul ranks OH #43 of 50 for net inbound one-way moves in 2025."},{"signal":"Unemployment","value":"3.7% vs 4.1% nationally","verdict":"neutral","text":"Unemployment of 3.7% runs 0.4 pts below the national 4.1%."},{"signal":"Days on market","value":"46 days","verdict":"neutral","text":"Homes in this ZIP list for a median of 46 days, 21% faster than a year ago."},{"signal":"Inventory","value":"+3% year over year","verdict":"neutral","text":"Active listings in this ZIP are up 3% year over year."},{"signal":"Pending ratio","value":"0.39","verdict":"neutral","text":"0.39 homes are under contract for every one still active in this ZIP \u2014 listings are accumulating faster than they clear."},{"signal":"Price cuts","value":"18% of listings","verdict":"good","text":"18% of active listings in this ZIP have cut their price."},{"signal":"House prices (FHFA)","value":"+5.7% year over year","verdict":"good","text":"The FHFA all-transactions index for this county moved +5.7% in the latest year."},{"signal":"Income growth","value":"+4.6% year over year","verdict":"good","text":"Per-capita income moved +4.6% \u2014 rent growth cannot outrun this for long."}],"demographics":{"county":"Cuyahoga County","state":"Ohio","population":1232925,"as_of":"2025","growth_pct_per_year":-0.47,"growth_since":"2020","net_domestic_migration":-4235,"net_domestic_migration_per_1k":-3.43,"source":"Census Population Estimates Program, county vintage 2025"},"uhaul":{"state":"OH","rank":43,"of":50,"rank_prior_year":14,"rank_change":-29,"year":2025,"published":"2026-01-05","source":"U-Haul Growth Index (annual press release, uhaul.com/Articles/About/)","methodology":"Net gain/loss of one-way truck, trailer and U-Box arrivals vs departures as share of total one-way traffic; >2.5M annual one-way transactions US+Canada.","note":"U-Haul publishes this only as an annual press release \u2014 there is no API or data file, so this is a dated snapshot. It measures one-way truck rentals, a self-selected sample skewed toward DIY movers, and it is state-level: it describes the region, not the neighborhood. Treat it as directional.","top_metros":["Dallas, TX","Houston, TX","Austin, TX","Charlotte, NC","Phoenix, AZ","Nashville, TN","Charleston, SC","Raleigh, NC","Atlanta, GA","Brownsville & McAllen, TX"]},"zip_listings":{"zip":"44105","name":"cleveland, oh","as_of":"2026-07","median_list_price":95000.0,"median_list_price_yoy_pct":-0.91,"days_on_market":46.0,"days_on_market_yoy_pct":-21.46,"active_listings":96.0,"active_listings_yoy_pct":3.2399999999999998,"new_listings":48.0,"price_cut_share_pct":18.17,"price_per_sqft":72.0,"median_sqft":1385.0,"pending_ratio":0.3927,"source":"Realtor.com Research, ZIP-level core inventory metrics"},"rent_benchmarks":{"zip":"44105","area":"Cleveland, OH HUD Metro FMR Area","by_bedroom":{"0":780,"1":890,"2":1070,"3":1380,"4":1470},"year":"FY2026","source":"HUD Small Area Fair Market Rents FY2026","note":"HUD's FMR is the 40th percentile of standard-quality rents \u2014 a conservative floor for a market-rate unit in good condition, not a median. Computed independently of Zillow, so agreement between the two is real corroboration."},"permits":1896.0,"permits_year":"2025","trends":{"employment":{"latest":608361.0,"as_of":"2026-06-01","history":{"dates":["2021-06-01","2021-07-01","2021-08-01","2021-09-01","2021-10-01","2021-11-01","2021-12-01","2022-01-01","2022-02-01","2022-03-01","2022-04-01","2022-05-01","2022-06-01","2022-07-01","2022-08-01","2022-09-01","2022-10-01","2022-11-01","2022-12-01","2023-01-01","2023-02-01","2023-03-01","2023-04-01","2023-05-01","2023-06-01","2023-07-01","2023-08-01","2023-09-01","2023-10-01","2023-11-01","2023-12-01","2024-01-01","2024-02-01","2024-03-01","2024-04-01","2024-05-01","2024-06-01","2024-07-01","2024-08-01","2024-09-01","2024-10-01","2024-11-01","2024-12-01","2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01","2025-07-01","2025-08-01","2025-09-01","2025-11-01","2025-12-01","2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01","2026-06-01"],"values":[577985.0,591165.0,581222.0,577063.0,582772.0,582769.0,574245.0,566194.0,569203.0,571737.0,580228.0,583518.0,593251.0,597762.0,599488.0,588417.0,591058.0,587069.0,583216.0,577878.0,581186.0,587364.0,592296.0,588632.0,603584.0,612866.0,603970.0,596277.0,602833.0,605237.0,588396.0,586602.0,583766.0,590671.0,602131.0,599286.0,608188.0,616955.0,612945.0,609247.0,609173.0,605540.0,598787.0,593200.0,595837.0,600400.0,608669.0,600380.0,618748.0,622210.0,618000.0,611482.0,611908.0,604391.0,601680.0,591428.0,603910.0,597985.0,599433.0,608361.0]}},"days_on_market":{"latest":41.0,"as_of":"2026-07-01","history":{"dates":["2021-08-01","2021-09-01","2021-10-01","2021-11-01","2021-12-01","2022-01-01","2022-02-01","2022-03-01","2022-04-01","2022-05-01","2022-06-01","2022-07-01","2022-08-01","2022-09-01","2022-10-01","2022-11-01","2022-12-01","2023-01-01","2023-02-01","2023-03-01","2023-04-01","2023-05-01","2023-06-01","2023-07-01","2023-08-01","2023-09-01","2023-10-01","2023-11-01","2023-12-01","2024-01-01","2024-02-01","2024-03-01","2024-04-01","2024-05-01","2024-06-01","2024-07-01","2024-08-01","2024-09-01","2024-10-01","2024-11-01","2024-12-01","2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01","2025-07-01","2025-08-01","2025-09-01","2025-10-01","2025-11-01","2025-12-01","2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01","2026-06-01","2026-07-01"],"values":[39.0,43.0,43.0,46.0,53.0,57.0,50.0,42.0,39.0,36.0,36.0,36.0,40.0,46.0,47.0,47.0,56.0,60.0,56.0,46.0,44.0,41.0,39.0,40.0,42.0,43.0,40.0,44.0,51.0,58.0,51.0,42.0,41.0,36.0,37.0,37.0,40.0,42.0,42.0,46.0,56.0,66.0,60.0,45.0,39.0,40.0,39.0,43.0,44.0,45.0,44.0,47.0,56.0,65.0,61.0,48.0,41.0,41.0,41.0,41.0]}},"active_listings":{"latest":2350.0,"as_of":"2026-07-01","history":{"dates":["2021-08-01","2021-09-01","2021-10-01","2021-11-01","2021-12-01","2022-01-01","2022-02-01","2022-03-01","2022-04-01","2022-05-01","2022-06-01","2022-07-01","2022-08-01","2022-09-01","2022-10-01","2022-11-01","2022-12-01","2023-01-01","2023-02-01","2023-03-01","2023-04-01","2023-05-01","2023-06-01","2023-07-01","2023-08-01","2023-09-01","2023-10-01","2023-11-01","2023-12-01","2024-01-01","2024-02-01","2024-03-01","2024-04-01","2024-05-01","2024-06-01","2024-07-01","2024-08-01","2024-09-01","2024-10-01","2024-11-01","2024-12-01","2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01","2025-07-01","2025-08-01","2025-09-01","2025-10-01","2025-11-01","2025-12-01","2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01","2026-06-01","2026-07-01"],"values":[2116.0,2102.0,2148.0,1982.0,1723.0,1404.0,1287.0,1304.0,1302.0,1508.0,1743.0,2024.0,2218.0,2249.0,2353.0,2303.0,2034.0,1819.0,1625.0,1490.0,1474.0,1479.0,1594.0,1655.0,1724.0,1827.0,1960.0,2027.0,1883.0,1657.0,1472.0,1434.0,1385.0,1467.0,1633.0,1756.0,1848.0,1972.0,2150.0,2152.0,1944.0,1756.0,1615.0,1610.0,1730.0,1893.0,2113.0,2260.0,2253.0,2330.0,2416.0,2328.0,2170.0,1879.0,1775.0,1800.0,1891.0,1999.0,2166.0,2350.0]}}}},"parcel_report":{"supported":true,"county":"Cuyahoga County, OH","source":"Cuyahoga County Fiscal Office, parcel fabric tax parcels","verified":"2026-08-12","non_disclosure_state":false,"note":null,"reason":null,"candidate_layers":[],"subject":{"parcel_id":"13817136","annual_tax":1592.06,"effective_tax_rate_pct":2.341,"year_built":1920,"in_foreclosure":false,"address":"13301 CAINE AVE, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"WASSIL, JUSTIN","market_value":68000,"land_value":9800,"building_value":58200,"living_area":1470.0,"rooms":7,"lot_acres":0.1271,"land_use":"1-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":67995.0,"last_sale_date":"2022-09-07","tax_year":2025,"value_per_sqft":46.26,"match":"address","source":"Cuyahoga County Fiscal Office, parcel fabric tax parcels","county":"Cuyahoga County, OH"},"comps":{"available":true,"radius_m":800,"years":3,"considered":817,"qualifying":116,"foreclosures_excluded":9,"source":"Cuyahoga County Fiscal Office, parcel fabric tax parcels","comps":[{"parcel_id":"13812130","annual_tax":1393.38,"effective_tax_rate_pct":2.342,"year_built":1920,"in_foreclosure":false,"address":"4075 E 138 ST, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"LEADIMIZE MANAGE,ENT LLC ","market_value":59500,"land_value":13000,"building_value":46500,"living_area":1632.0,"rooms":8,"lot_acres":0.1227,"land_use":"2-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":66750.0,"last_sale_date":"2026-08-06","tax_year":2025,"value_per_sqft":36.46,"sale_price_per_sqft":40.9,"outlier":false},{"parcel_id":"13815085","annual_tax":2301.8,"effective_tax_rate_pct":2.342,"year_built":1924,"in_foreclosure":false,"address":"4218 E 124 ST, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"MIFH LLC, ","market_value":98300,"land_value":11000,"building_value":87300,"living_area":1702.0,"rooms":8,"lot_acres":0.1183,"land_use":"1-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":98000.0,"last_sale_date":"2026-07-24","tax_year":2025,"value_per_sqft":57.76,"sale_price_per_sqft":57.58,"outlier":false},{"parcel_id":"13805135","annual_tax":1494.4,"effective_tax_rate_pct":2.342,"year_built":1924,"in_foreclosure":false,"address":"13316 EDGEWOOD AVE, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"FERMIN HOSPITALITY LLC","market_value":63800,"land_value":10900,"building_value":52900,"living_area":1144.0,"rooms":6,"lot_acres":0.0877,"land_use":"1-FAMILY PLATTED LOT","zoning":"1F","buildings":1,"last_sale_price":102000.0,"last_sale_date":"2026-07-22","tax_year":2025,"value_per_sqft":55.77,"sale_price_per_sqft":89.16,"outlier":false},{"parcel_id":"13805027","annual_tax":1278.32,"effective_tax_rate_pct":2.341,"year_built":1925,"in_foreclosure":false,"address":"13305 HARVARD AVE, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"BANE CAPITAL OH 1 LLC ","market_value":54600,"land_value":8200,"building_value":46400,"living_area":1573.0,"rooms":5,"lot_acres":0.0767,"land_use":"1-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":100000.0,"last_sale_date":"2026-06-29","tax_year":2025,"value_per_sqft":34.71,"sale_price_per_sqft":63.57,"outlier":false},{"parcel_id":"13811120","annual_tax":1339.2,"effective_tax_rate_pct":2.341,"year_built":1920,"in_foreclosure":false,"address":"13217 MARSTON AVE, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"APEX PROPERTY GROUP OHIO LLC","market_value":57200,"land_value":13000,"building_value":44200,"living_area":1508.0,"rooms":9,"lot_acres":0.1227,"land_use":"1-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":125000.0,"last_sale_date":"2026-06-26","tax_year":2025,"value_per_sqft":37.93,"sale_price_per_sqft":82.89,"outlier":false},{"parcel_id":"13812064","annual_tax":1543.24,"effective_tax_rate_pct":2.342,"year_built":1925,"in_foreclosure":false,"address":"4086 E 141 ST, CLEVELAND, OH, 44128","city":"CLEVELAND","zip":"44128","owner":"BRICKLINE HOMES LLC","market_value":65900,"land_value":12200,"building_value":53700,"living_area":1379.0,"rooms":8,"lot_acres":0.1096,"land_use":"2-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":70000.0,"last_sale_date":"2026-06-22","tax_year":2025,"value_per_sqft":47.79,"sale_price_per_sqft":50.76,"outlier":false},{"parcel_id":"13805132","annual_tax":952.9,"effective_tax_rate_pct":1.352,"year_built":1924,"in_foreclosure":false,"address":"13408 EDGEWOOD AVE, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"THE MULLINS GROUP LLC ","market_value":70500,"land_value":10900,"building_value":59600,"living_area":1353.0,"rooms":6,"lot_acres":0.0877,"land_use":"1-FAMILY PLATTED LOT","zoning":"1F","buildings":1,"last_sale_price":45000.0,"last_sale_date":"2026-06-04","tax_year":2025,"value_per_sqft":52.11,"sale_price_per_sqft":33.26,"outlier":false},{"parcel_id":"13811081","annual_tax":1533.84,"effective_tax_rate_pct":2.342,"year_built":1916,"in_foreclosure":false,"address":"13116 HARVARD AVE, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"GARCIA, YENI YANETH LOPEZ ","market_value":65500,"land_value":9500,"building_value":56000,"living_area":1344.0,"rooms":6,"lot_acres":0.1036,"land_use":"1-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":38000.0,"last_sale_date":"2026-05-30","tax_year":2025,"value_per_sqft":48.74,"sale_price_per_sqft":28.27,"outlier":false},{"parcel_id":"13812120","annual_tax":2273.7,"effective_tax_rate_pct":2.342,"year_built":1920,"in_foreclosure":false,"address":"4119 E 138 ST, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"RAIZEL REALTY LLC ","market_value":97100,"land_value":13000,"building_value":84100,"living_area":1828.0,"rooms":8,"lot_acres":0.1227,"land_use":"2-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":77000.0,"last_sale_date":"2026-05-23","tax_year":2025,"value_per_sqft":53.12,"sale_price_per_sqft":42.12,"outlier":false},{"parcel_id":"13805163","annual_tax":1719.16,"effective_tax_rate_pct":2.342,"year_built":1920,"in_foreclosure":false,"address":"13505 EDGEWOOD AVE, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"RENOGIRL LLC ","market_value":73400,"land_value":10900,"building_value":62500,"living_area":1954.0,"rooms":8,"lot_acres":0.0877,"land_use":"2-FAMILY PLATTED LOT","zoning":"1F","buildings":1,"last_sale_price":50000.0,"last_sale_date":"2026-05-21","tax_year":2025,"value_per_sqft":37.56,"sale_price_per_sqft":25.59,"outlier":false},{"parcel_id":"13815037","annual_tax":1463.64,"effective_tax_rate_pct":2.342,"year_built":1919,"in_foreclosure":false,"address":"4300 E 128 ST, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"PERERA PROPERTIES LLC","market_value":62500,"land_value":11000,"building_value":51500,"living_area":1652.0,"rooms":6,"lot_acres":0.1183,"land_use":"1-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":41000.0,"last_sale_date":"2026-05-15","tax_year":2025,"value_per_sqft":37.83,"sale_price_per_sqft":24.82,"outlier":false},{"parcel_id":"13812097","annual_tax":1562.24,"effective_tax_rate_pct":2.314,"year_built":1920,"in_foreclosure":false,"address":"4110 E 138 ST, CLEVELAND, OH, 44105","city":"CLEVELAND","zip":"44105","owner":"DEANE, ANNETTE ","market_value":67500,"land_value":13000,"building_value":54500,"living_area":1664.0,"rooms":10,"lot_acres":0.1227,"land_use":"2-FAMILY PLATTED LOT","zoning":"2F","buildings":1,"last_sale_price":67500.0,"last_sale_date":"2026-05-08","tax_year":2025,"value_per_sqft":40.56,"sale_price_per_sqft":40.56,"outlier":false}],"median_price_per_sqft":48.88,"price_per_sqft_p25":32.7,"price_per_sqft_p75":72.46,"median_sale_price":70750,"used_for_stats":114,"outliers_excluded":2,"dispersion_note":"Sale prices per square foot among these 114 sales run from $11 to $135. 9 sales the county flags as foreclosures were excluded. Public records still cannot distinguish an arm's-length sale from a family transfer or a post-renovation flip, so treat the median as a starting point and read the individual sales. 2 extreme sales were excluded from the median.","implied_value":71846,"implied_value_low":48076,"implied_value_high":106516,"implied_value_basis":"114 recorded sales within 800 m over 3 years, median $49/sq ft applied to the subject's 1,470 sq ft"}}},{"id":"marlowe","label":"1453 Marlowe Ave","sub":"Lakewood, OH 44107","geocode":{"matched_address":"1453 MARLOWE AVE, LAKEWOOD, OH, 44107","city":"Lakewood","state":"OH","zip":"44107","county":"Cuyahoga County","county_fips":"39035","tract":"39035161300","source":"US Census Bureau Geocoder (Public_AR_Current)"},"tract_hpi":{"tract":"39035161300","as_of":2025,"index":510.0,"change_1y_pct":3.91,"cagr_5y":9.19,"cagr_10y":8.97},"parcel":{"parcel_id":"31407048","annual_tax":6954.7,"effective_tax_rate_pct":2.243,"year_built":1910,"in_foreclosure":false,"address":"1453 MARLOWE AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"PATRICK - ONEILL, JAMES","market_value":310000,"land_value":53800,"building_value":256200,"living_area":1900.0,"rooms":8,"lot_acres":0.1105,"land_use":"1-FAMILY PLATTED LOT","zoning":"R1H","buildings":1,"last_sale_price":82000.0,"last_sale_date":"1991-11-20","tax_year":2025,"value_per_sqft":163.16,"match":"address","source":"Cuyahoga County Fiscal Office, parcel fabric tax parcels","county":"Cuyahoga County, OH"},"suggested_inputs":{"purchase_price":310000,"monthly_rent":1497,"interest_rate_pct":6.69,"property_tax_rate_pct":2.243,"annual_appreciation_pct":5.0,"annual_rent_growth_pct":5.0},"provenance":{"home_value":"Zillow ZHVI, 2026-06-30","rent":"Zillow ZORI (zip-level), 2026-06-30","mortgage_rate":"FRED MORTGAGE30US, 2026-08-06","property_tax":"Cuyahoga County, OH billed 6,955 on this parcel in tax year 2025 \u2014 2.243% of its market value","appreciation":"census tract 39035161300 10-year trailing CAGR (8.97%) capped to a defensible forward assumption","purchase_price":"Cuyahoga County, OH assessor market value, tax year 2025"},"market":{"city":"Lakewood","state":"OH","zip":"44107","price_to_rent":17.1,"tax":{"state":"OH","effective_rate_pct":1.53,"is_estimate":true,"note":"Statewide average effective rate \u2014 county rates vary; verify locally."},"source":"Zillow Research ZHVI / ZORI (public CSVs)","home_value":{"latest":300976.92,"as_of":"2026-06-30","cagr_1y":4.45,"cagr_5y":5.39,"cagr_10y":8.05,"history":{"dates":["2015-07-31","2015-08-31","2015-09-30","2015-10-31","2015-11-30","2015-12-31","2016-01-31","2016-02-29","2016-03-31","2016-04-30","2016-05-31","2016-06-30","2016-07-31","2016-08-31","2016-09-30","2016-10-31","2016-11-30","2016-12-31","2017-01-31","2017-02-28","2017-03-31","2017-04-30","2017-05-31","2017-06-30","2017-07-31","2017-08-31","2017-09-30","2017-10-31","2017-11-30","2017-12-31","2018-01-31","2018-02-28","2018-03-31","2018-04-30","2018-05-31","2018-06-30","2018-07-31","2018-08-31","2018-09-30","2018-10-31","2018-11-30","2018-12-31","2019-01-31","2019-02-28","2019-03-31","2019-04-30","2019-05-31","2019-06-30","2019-07-31","2019-08-31","2019-09-30","2019-10-31","2019-11-30","2019-12-31","2020-01-31","2020-02-29","2020-03-31","2020-04-30","2020-05-31","2020-06-30","2020-07-31","2020-08-31","2020-09-30","2020-10-31","2020-11-30","2020-12-31","2021-01-31","2021-02-28","2021-03-31","2021-04-30","2021-05-31","2021-06-30","2021-07-31","2021-08-31","2021-09-30","2021-10-31","2021-11-30","2021-12-31","2022-01-31","2022-02-28","2022-03-31","2022-04-30","2022-05-31","2022-06-30","2022-07-31","2022-08-31","2022-09-30","2022-10-31","2022-11-30","2022-12-31","2023-01-31","2023-02-28","2023-03-31","2023-04-30","2023-05-31","2023-06-30","2023-07-31","2023-08-31","2023-09-30","2023-10-31","2023-11-30","2023-12-31","2024-01-31","2024-02-29","2024-03-31","2024-04-30","2024-05-31","2024-06-30","2024-07-31","2024-08-31","2024-09-30","2024-10-31","2024-11-30","2024-12-31","2025-01-31","2025-02-28","2025-03-31","2025-04-30","2025-05-31","2025-06-30","2025-07-31","2025-08-31","2025-09-30","2025-10-31","2025-11-30","2025-12-31","2026-01-31","2026-02-28","2026-03-31","2026-04-30","2026-05-31","2026-06-30"],"values":[127862.47,128911.36,129817.92,130805.52,131728.76,132841.33,133965.96,135054.49,136054.09,137111.05,137958.36,138825.79,139405.93,140311.53,141651.6,143248.8,144782.15,146231.5,147651.99,149358.67,150815.94,152148.93,153073.19,153763.3,154602.91,155311.02,155996.22,156643.41,157735.76,159289.2,160610.46,162017.17,163820.54,166021.81,168409.45,169872.43,171136.1,171945.97,173161.23,174245.35,175615.01,176727.06,178233.69,180216.58,182562.87,184121.6,184664.13,184827.53,185312.6,186009.91,186928.94,187813.91,189055.76,190198.86,191688.0,192953.4,194047.37,194652.99,194767.56,194779.13,195454.14,197150.01,199707.21,202646.64,205862.6,209405.32,212590.72,215950.84,219169.73,223085.4,227290.71,231557.35,234446.38,235003.67,233344.91,231753.79,230988.42,231468.84,232823.48,234944.93,237933.43,241649.85,245494.16,248710.61,249886.99,249292.08,247933.78,247204.14,247604.6,248466.25,249445.5,250357.31,251668.79,253558.77,255800.41,258202.51,260494.13,263078.78,265775.64,268034.91,269448.43,270304.51,270875.54,271787.49,272869.64,274476.92,275911.18,277882.6,279674.2,281420.41,281968.96,281921.03,281376.83,281423.9,281907.11,282820.8,283811.12,284976.81,286445.73,288149.08,289902.28,290720.65,291283.76,292183.85,294166.46,295927.34,296939.08,297903.34,298804.56,299563.04,300035.99,300976.92]}},"rent":{"latest":1466.62,"as_of":"2026-06-30","cagr_1y":3.84,"cagr_5y":5.23,"level":"zip","history":{"dates":["2020-07-31","2020-08-31","2020-09-30","2020-10-31","2020-11-30","2020-12-31","2021-01-31","2021-02-28","2021-03-31","2021-04-30","2021-05-31","2021-06-30","2021-07-31","2021-08-31","2021-09-30","2021-10-31","2021-11-30","2021-12-31","2022-01-31","2022-02-28","2022-03-31","2022-04-30","2022-05-31","2022-06-30","2022-07-31","2022-08-31","2022-09-30","2022-10-31","2022-11-30","2022-12-31","2023-01-31","2023-02-28","2023-03-31","2023-04-30","2023-05-31","2023-06-30","2023-07-31","2023-08-31","2023-09-30","2023-10-31","2023-11-30","2023-12-31","2024-01-31","2024-02-29","2024-03-31","2024-04-30","2024-05-31","2024-06-30","2024-07-31","2024-08-31","2024-09-30","2024-10-31","2024-11-30","2024-12-31","2025-01-31","2025-02-28","2025-03-31","2025-04-30","2025-05-31","2025-06-30","2025-07-31","2025-08-31","2025-09-30","2025-10-31","2025-11-30","2025-12-31","2026-01-31","2026-02-28","2026-03-31","2026-04-30","2026-05-31","2026-06-30"],"values":[1051.82,1071.1,1068.12,1073.58,1062.66,1080.27,1092.67,1107.0,1103.94,1115.9,1126.21,1136.58,1143.66,1153.73,1162.29,1164.67,1168.13,1168.59,1182.79,1197.26,1212.84,1215.61,1227.21,1237.93,1261.51,1268.5,1282.99,1281.11,1277.91,1277.28,1269.7,1273.5,1274.87,1285.17,1296.9,1300.33,1316.89,1319.93,1326.67,1329.43,1333.38,1340.49,1335.16,1335.19,1332.37,1343.29,1351.98,1354.54,1363.26,1373.51,1398.24,1401.99,1404.92,1403.75,1403.44,1403.5,1403.5,1397.7,1406.33,1412.38,1430.44,1445.19,1435.58,1443.8,1437.84,1466.27,1481.42,1486.69,1479.87,1465.34,1462.25,1466.62]}}},"fundamentals":{"county":"Cuyahoga County","state":"OH","score":55,"label":"Solid","findings":[{"signal":"Job growth","value":"-1.7% year over year","verdict":"bad","text":"Employment fell 1.7% over the past year, which pressures both rents and vacancy."},{"signal":"Inventory","value":"+23% year over year","verdict":"bad","text":"Active listings in this ZIP are up 23% year over year \u2014 supply is building, which favors buyers and caps rent growth."},{"signal":"Population","value":"-0.5%/yr since 2020","verdict":"bad","text":"The county has been losing population at 0.5%/yr since 2020, down to 1,232,925. A shrinking tenant pool is the hardest headwind to underwrite around."},{"signal":"Migration","value":"-3.4 per 1,000","verdict":"bad","text":"Census measures net domestic migration of -3.4 per 1,000 county residents \u00b7 U-Haul ranks OH #43 of 50 for net inbound one-way moves in 2025."},{"signal":"Unemployment","value":"3.7% vs 4.1% nationally","verdict":"neutral","text":"Unemployment of 3.7% runs 0.4 pts below the national 4.1%."},{"signal":"Days on market","value":"32 days","verdict":"good","text":"Homes in this ZIP list for a median of 32 days, 21% faster than a year ago."},{"signal":"Price cuts","value":"14% of listings","verdict":"good","text":"14% of active listings in this ZIP have cut their price."},{"signal":"Pending ratio","value":"0.74","verdict":"good","text":"0.74 homes are under contract for every one still active in this ZIP \u2014 buyers are absorbing supply quickly."},{"signal":"House prices (FHFA)","value":"+5.7% year over year","verdict":"good","text":"The FHFA all-transactions index for this county moved +5.7% in the latest year."},{"signal":"Income growth","value":"+4.6% year over year","verdict":"good","text":"Per-capita income moved +4.6% \u2014 rent growth cannot outrun this for long."}],"demographics":{"county":"Cuyahoga County","state":"Ohio","population":1232925,"as_of":"2025","growth_pct_per_year":-0.47,"growth_since":"2020","net_domestic_migration":-4235,"net_domestic_migration_per_1k":-3.43,"source":"Census Population Estimates Program, county vintage 2025"},"uhaul":{"state":"OH","rank":43,"of":50,"rank_prior_year":14,"rank_change":-29,"year":2025,"published":"2026-01-05","source":"U-Haul Growth Index (annual press release, uhaul.com/Articles/About/)","methodology":"Net gain/loss of one-way truck, trailer and U-Box arrivals vs departures as share of total one-way traffic; >2.5M annual one-way transactions US+Canada.","note":"U-Haul publishes this only as an annual press release \u2014 there is no API or data file, so this is a dated snapshot. It measures one-way truck rentals, a self-selected sample skewed toward DIY movers, and it is state-level: it describes the region, not the neighborhood. Treat it as directional.","top_metros":["Dallas, TX","Houston, TX","Austin, TX","Charlotte, NC","Phoenix, AZ","Nashville, TN","Charleston, SC","Raleigh, NC","Atlanta, GA","Brownsville & McAllen, TX"]},"zip_listings":{"zip":"44107","name":"lakewood, oh","as_of":"2026-07","median_list_price":287150.0,"median_list_price_yoy_pct":11.3,"days_on_market":32.0,"days_on_market_yoy_pct":-20.75,"active_listings":88.0,"active_listings_yoy_pct":23.080000000000002,"new_listings":72.0,"price_cut_share_pct":13.55,"price_per_sqft":199.0,"median_sqft":1456.0,"pending_ratio":0.7443,"source":"Realtor.com Research, ZIP-level core inventory metrics"},"rent_benchmarks":{"zip":"44107","area":"Cleveland, OH HUD Metro FMR Area","by_bedroom":{"0":990,"1":1130,"2":1360,"3":1750,"4":1870},"year":"FY2026","source":"HUD Small Area Fair Market Rents FY2026","note":"HUD's FMR is the 40th percentile of standard-quality rents \u2014 a conservative floor for a market-rate unit in good condition, not a median. Computed independently of Zillow, so agreement between the two is real corroboration."},"permits":1896.0,"permits_year":"2025","trends":{"employment":{"latest":608361.0,"as_of":"2026-06-01","history":{"dates":["2021-06-01","2021-07-01","2021-08-01","2021-09-01","2021-10-01","2021-11-01","2021-12-01","2022-01-01","2022-02-01","2022-03-01","2022-04-01","2022-05-01","2022-06-01","2022-07-01","2022-08-01","2022-09-01","2022-10-01","2022-11-01","2022-12-01","2023-01-01","2023-02-01","2023-03-01","2023-04-01","2023-05-01","2023-06-01","2023-07-01","2023-08-01","2023-09-01","2023-10-01","2023-11-01","2023-12-01","2024-01-01","2024-02-01","2024-03-01","2024-04-01","2024-05-01","2024-06-01","2024-07-01","2024-08-01","2024-09-01","2024-10-01","2024-11-01","2024-12-01","2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01","2025-07-01","2025-08-01","2025-09-01","2025-11-01","2025-12-01","2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01","2026-06-01"],"values":[577985.0,591165.0,581222.0,577063.0,582772.0,582769.0,574245.0,566194.0,569203.0,571737.0,580228.0,583518.0,593251.0,597762.0,599488.0,588417.0,591058.0,587069.0,583216.0,577878.0,581186.0,587364.0,592296.0,588632.0,603584.0,612866.0,603970.0,596277.0,602833.0,605237.0,588396.0,586602.0,583766.0,590671.0,602131.0,599286.0,608188.0,616955.0,612945.0,609247.0,609173.0,605540.0,598787.0,593200.0,595837.0,600400.0,608669.0,600380.0,618748.0,622210.0,618000.0,611482.0,611908.0,604391.0,601680.0,591428.0,603910.0,597985.0,599433.0,608361.0]}},"days_on_market":{"latest":41.0,"as_of":"2026-07-01","history":{"dates":["2021-08-01","2021-09-01","2021-10-01","2021-11-01","2021-12-01","2022-01-01","2022-02-01","2022-03-01","2022-04-01","2022-05-01","2022-06-01","2022-07-01","2022-08-01","2022-09-01","2022-10-01","2022-11-01","2022-12-01","2023-01-01","2023-02-01","2023-03-01","2023-04-01","2023-05-01","2023-06-01","2023-07-01","2023-08-01","2023-09-01","2023-10-01","2023-11-01","2023-12-01","2024-01-01","2024-02-01","2024-03-01","2024-04-01","2024-05-01","2024-06-01","2024-07-01","2024-08-01","2024-09-01","2024-10-01","2024-11-01","2024-12-01","2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01","2025-07-01","2025-08-01","2025-09-01","2025-10-01","2025-11-01","2025-12-01","2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01","2026-06-01","2026-07-01"],"values":[39.0,43.0,43.0,46.0,53.0,57.0,50.0,42.0,39.0,36.0,36.0,36.0,40.0,46.0,47.0,47.0,56.0,60.0,56.0,46.0,44.0,41.0,39.0,40.0,42.0,43.0,40.0,44.0,51.0,58.0,51.0,42.0,41.0,36.0,37.0,37.0,40.0,42.0,42.0,46.0,56.0,66.0,60.0,45.0,39.0,40.0,39.0,43.0,44.0,45.0,44.0,47.0,56.0,65.0,61.0,48.0,41.0,41.0,41.0,41.0]}},"active_listings":{"latest":2350.0,"as_of":"2026-07-01","history":{"dates":["2021-08-01","2021-09-01","2021-10-01","2021-11-01","2021-12-01","2022-01-01","2022-02-01","2022-03-01","2022-04-01","2022-05-01","2022-06-01","2022-07-01","2022-08-01","2022-09-01","2022-10-01","2022-11-01","2022-12-01","2023-01-01","2023-02-01","2023-03-01","2023-04-01","2023-05-01","2023-06-01","2023-07-01","2023-08-01","2023-09-01","2023-10-01","2023-11-01","2023-12-01","2024-01-01","2024-02-01","2024-03-01","2024-04-01","2024-05-01","2024-06-01","2024-07-01","2024-08-01","2024-09-01","2024-10-01","2024-11-01","2024-12-01","2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01","2025-07-01","2025-08-01","2025-09-01","2025-10-01","2025-11-01","2025-12-01","2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01","2026-06-01","2026-07-01"],"values":[2116.0,2102.0,2148.0,1982.0,1723.0,1404.0,1287.0,1304.0,1302.0,1508.0,1743.0,2024.0,2218.0,2249.0,2353.0,2303.0,2034.0,1819.0,1625.0,1490.0,1474.0,1479.0,1594.0,1655.0,1724.0,1827.0,1960.0,2027.0,1883.0,1657.0,1472.0,1434.0,1385.0,1467.0,1633.0,1756.0,1848.0,1972.0,2150.0,2152.0,1944.0,1756.0,1615.0,1610.0,1730.0,1893.0,2113.0,2260.0,2253.0,2330.0,2416.0,2328.0,2170.0,1879.0,1775.0,1800.0,1891.0,1999.0,2166.0,2350.0]}}}},"parcel_report":{"supported":true,"county":"Cuyahoga County, OH","source":"Cuyahoga County Fiscal Office, parcel fabric tax parcels","verified":"2026-08-12","non_disclosure_state":false,"note":null,"reason":null,"candidate_layers":[],"subject":{"parcel_id":"31407048","annual_tax":6954.7,"effective_tax_rate_pct":2.243,"year_built":1910,"in_foreclosure":false,"address":"1453 MARLOWE AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"PATRICK - ONEILL, JAMES","market_value":310000,"land_value":53800,"building_value":256200,"living_area":1900.0,"rooms":8,"lot_acres":0.1105,"land_use":"1-FAMILY PLATTED LOT","zoning":"R1H","buildings":1,"last_sale_price":82000.0,"last_sale_date":"1991-11-20","tax_year":2025,"value_per_sqft":163.16,"match":"address","source":"Cuyahoga County Fiscal Office, parcel fabric tax parcels","county":"Cuyahoga County, OH"},"comps":{"available":true,"radius_m":800,"years":3,"considered":702,"qualifying":80,"foreclosures_excluded":0,"source":"Cuyahoga County Fiscal Office, parcel fabric tax parcels","comps":[{"parcel_id":"31217052","annual_tax":7548.88,"effective_tax_rate_pct":2.295,"year_built":1920,"in_foreclosure":false,"address":"1308 WARREN RD, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"1308 WARREN PROPERTIES LLC ","market_value":328900,"land_value":51600,"building_value":277300,"living_area":1988.0,"rooms":10,"lot_acres":0.1105,"land_use":"2-FAMILY PLATTED LOT","zoning":"R2","buildings":1,"last_sale_price":410000.0,"last_sale_date":"2026-07-29","tax_year":2025,"value_per_sqft":165.44,"sale_price_per_sqft":206.24,"outlier":false},{"parcel_id":"31216175","annual_tax":5487.48,"effective_tax_rate_pct":2.006,"year_built":1914,"in_foreclosure":false,"address":"1279 COOK AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"ELSASS, CARTER ","market_value":273600,"land_value":56000,"building_value":217600,"living_area":1260.0,"rooms":6,"lot_acres":0.1052,"land_use":"1-FAMILY PLATTED LOT","zoning":"R2","buildings":1,"last_sale_price":347191.0,"last_sale_date":"2026-07-23","tax_year":2025,"value_per_sqft":217.14,"sale_price_per_sqft":275.55,"outlier":false},{"parcel_id":"31222067","annual_tax":7928.28,"effective_tax_rate_pct":2.265,"year_built":1924,"in_foreclosure":false,"address":"1276 HATHAWAY AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"HARWOOD, THOMAS & LINDA M ","market_value":350000,"land_value":57500,"building_value":292500,"living_area":2436.0,"rooms":12,"lot_acres":0.114,"land_use":"2-FAMILY PLATTED LOT","zoning":"R1H","buildings":1,"last_sale_price":445000.0,"last_sale_date":"2026-07-17","tax_year":2025,"value_per_sqft":143.68,"sale_price_per_sqft":182.68,"outlier":false},{"parcel_id":"31220004","annual_tax":5875.94,"effective_tax_rate_pct":2.02,"year_built":1920,"in_foreclosure":false,"address":"1351 MANOR PARK AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"BISHOP, JAMES & TOMLIN, VICKIE ","market_value":290900,"land_value":79300,"building_value":211600,"living_area":1503.0,"rooms":7,"lot_acres":0.3145,"land_use":"1-FAMILY PLATTED LOT","zoning":"R1H","buildings":1,"last_sale_price":460000.0,"last_sale_date":"2026-07-11","tax_year":2025,"value_per_sqft":193.55,"sale_price_per_sqft":306.05,"outlier":false},{"parcel_id":"31216075","annual_tax":6452.82,"effective_tax_rate_pct":2.244,"year_built":1916,"in_foreclosure":false,"address":"1285 ST CHARLES AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"CHUANG, KAI-CHENG & SCHREIBER, KYLE ","market_value":287600,"land_value":57500,"building_value":230100,"living_area":1559.0,"rooms":7,"lot_acres":0.114,"land_use":"1-FAMILY PLATTED LOT","zoning":"R2","buildings":1,"last_sale_price":530000.0,"last_sale_date":"2026-07-08","tax_year":2025,"value_per_sqft":184.48,"sale_price_per_sqft":339.96,"outlier":false},{"parcel_id":"31217096","annual_tax":5968.22,"effective_tax_rate_pct":2.244,"year_built":1909,"in_foreclosure":false,"address":"1348 ST CHARLES AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"SULLIVAN, NANCY & PATRICK","market_value":266000,"land_value":57500,"building_value":208500,"living_area":1520.0,"rooms":6,"lot_acres":0.114,"land_use":"1-FAMILY PLATTED LOT","zoning":"R2","buildings":1,"last_sale_price":365000.0,"last_sale_date":"2026-06-30","tax_year":2025,"value_per_sqft":175.0,"sale_price_per_sqft":240.13,"outlier":false},{"parcel_id":"31214035","annual_tax":5076.8,"effective_tax_rate_pct":2.007,"year_built":1921,"in_foreclosure":false,"address":"1307 GLADYS AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"MALINE, MICHAEL G ","market_value":252900,"land_value":46100,"building_value":206800,"living_area":2210.0,"rooms":10,"lot_acres":0.0885,"land_use":"2-FAMILY PLATTED LOT","zoning":"R2","buildings":1,"last_sale_price":350000.0,"last_sale_date":"2026-06-25","tax_year":2025,"value_per_sqft":114.43,"sale_price_per_sqft":158.37,"outlier":false},{"parcel_id":"31216160","annual_tax":5811.18,"effective_tax_rate_pct":2.295,"year_built":1909,"in_foreclosure":false,"address":"1272 WARREN RD, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"HART, LARRY & NANCY","market_value":253200,"land_value":52200,"building_value":201000,"living_area":1257.0,"rooms":6,"lot_acres":0.1131,"land_use":"1-FAMILY PLATTED LOT","zoning":"R2","buildings":1,"last_sale_price":379000.0,"last_sale_date":"2026-06-08","tax_year":2025,"value_per_sqft":201.43,"sale_price_per_sqft":301.51,"outlier":false},{"parcel_id":"31217120","annual_tax":5952.22,"effective_tax_rate_pct":2.244,"year_built":1918,"in_foreclosure":false,"address":"1314 BELLE AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"HARTMAN, CRAIG S. ","market_value":265300,"land_value":56100,"building_value":209200,"living_area":1458.0,"rooms":7,"lot_acres":0.1083,"land_use":"1-FAMILY PLATTED LOT","zoning":"R2","buildings":1,"last_sale_price":326000.0,"last_sale_date":"2026-06-02","tax_year":2025,"value_per_sqft":181.96,"sale_price_per_sqft":223.59,"outlier":false},{"parcel_id":"31216023","annual_tax":8269.38,"effective_tax_rate_pct":2.243,"year_built":1914,"in_foreclosure":false,"address":"1306 MARLOWE AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"MYLETT, HAILEY ","market_value":368600,"land_value":84400,"building_value":284200,"living_area":1662.0,"rooms":6,"lot_acres":0.2279,"land_use":"1-FAMILY PLATTED LOT","zoning":"R2","buildings":1,"last_sale_price":540000.0,"last_sale_date":"2026-06-01","tax_year":2025,"value_per_sqft":221.78,"sale_price_per_sqft":324.91,"outlier":false},{"parcel_id":"31219014","annual_tax":6162.96,"effective_tax_rate_pct":1.985,"year_built":1925,"in_foreclosure":false,"address":"1282 CHASE AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"GERWITZ, JOHN & CRISTINA ","market_value":310400,"land_value":57300,"building_value":253100,"living_area":1735.0,"rooms":7,"lot_acres":0.1131,"land_use":"1-FAMILY PLATTED LOT","zoning":"R1H","buildings":1,"last_sale_price":295000.0,"last_sale_date":"2026-05-19","tax_year":2025,"value_per_sqft":178.9,"sale_price_per_sqft":170.03,"outlier":false},{"parcel_id":"31215114","annual_tax":6741.0,"effective_tax_rate_pct":2.295,"year_built":1905,"in_foreclosure":false,"address":"1200 MARLOWE AVE, LAKEWOOD, OH, 44107","city":"LAKEWOOD","zip":"44107","owner":"TALBERT, ALEXANDER-ETAL ","market_value":293700,"land_value":57500,"building_value":236200,"living_area":1754.0,"rooms":7,"lot_acres":0.114,"land_use":"1-FAMILY PLATTED LOT","zoning":"R2","buildings":1,"last_sale_price":455000.0,"last_sale_date":"2026-05-04","tax_year":2025,"value_per_sqft":167.45,"sale_price_per_sqft":259.41,"outlier":false}],"median_price_per_sqft":221.04,"price_per_sqft_p25":176.39,"price_per_sqft_p75":261.1,"median_sale_price":375000,"used_for_stats":79,"outliers_excluded":1,"dispersion_note":"Sale prices per square foot among these 79 sales run from $104 to $377. Public records still cannot distinguish an arm's-length sale from a family transfer or a post-renovation flip, so treat the median as a starting point and read the individual sales. 1 extreme sales were excluded from the median.","implied_value":419976,"implied_value_low":335150,"implied_value_high":496081,"implied_value_basis":"79 recorded sales within 800 m over 3 years, median $221/sq ft applied to the subject's 1,900 sq ft"}}},{"id":"travis","label":"2210 S 1st St","sub":"Austin, TX 78704","geocode":{"matched_address":"2210 S 1ST ST, AUSTIN, TX, 78704","city":"Austin","state":"TX","zip":"78704","county":"Travis County","county_fips":"48453","tract":"48453001312","source":"US Census Bureau Geocoder (Public_AR_Current)"},"tract_hpi":{"tract":"48453001312","as_of":2025,"index":1746.1,"change_1y_pct":27.62,"cagr_5y":7.72,"cagr_10y":6.79},"parcel":null,"suggested_inputs":{"purchase_price":727004,"monthly_rent":1864,"interest_rate_pct":6.69,"property_tax_rate_pct":1.68,"annual_appreciation_pct":5.0,"annual_rent_growth_pct":1.18},"provenance":{"home_value":"Zillow ZHVI, 2026-06-30","rent":"Zillow ZORI (zip-level), 2026-06-30","mortgage_rate":"FRED MORTGAGE30US, 2026-08-06","property_tax":"Statewide average effective rate \u2014 county rates vary; verify locally.","appreciation":"census tract 48453001312 10-year trailing CAGR (6.79%) capped to a defensible forward assumption","purchase_price":"Zillow ZHVI ZIP median, 2026-06-30"},"market":{"city":"Austin","state":"TX","zip":"78704","price_to_rent":32.5,"tax":{"state":"TX","effective_rate_pct":1.68,"is_estimate":true,"note":"Statewide average effective rate \u2014 county rates vary; verify locally."},"source":"Zillow Research ZHVI / ZORI (public CSVs)","home_value":{"latest":727003.98,"as_of":"2026-06-30","cagr_1y":-4.38,"cagr_5y":-1.8,"cagr_10y":3.61,"history":{"dates":["2015-07-31","2015-08-31","2015-09-30","2015-10-31","2015-11-30","2015-12-31","2016-01-31","2016-02-29","2016-03-31","2016-04-30","2016-05-31","2016-06-30","2016-07-31","2016-08-31","2016-09-30","2016-10-31","2016-11-30","2016-12-31","2017-01-31","2017-02-28","2017-03-31","2017-04-30","2017-05-31","2017-06-30","2017-07-31","2017-08-31","2017-09-30","2017-10-31","2017-11-30","2017-12-31","2018-01-31","2018-02-28","2018-03-31","2018-04-30","2018-05-31","2018-06-30","2018-07-31","2018-08-31","2018-09-30","2018-10-31","2018-11-30","2018-12-31","2019-01-31","2019-02-28","2019-03-31","2019-04-30","2019-05-31","2019-06-30","2019-07-31","2019-08-31","2019-09-30","2019-10-31","2019-11-30","2019-12-31","2020-01-31","2020-02-29","2020-03-31","2020-04-30","2020-05-31","2020-06-30","2020-07-31","2020-08-31","2020-09-30","2020-10-31","2020-11-30","2020-12-31","2021-01-31","2021-02-28","2021-03-31","2021-04-30","2021-05-31","2021-06-30","2021-07-31","2021-08-31","2021-09-30","2021-10-31","2021-11-30","2021-12-31","2022-01-31","2022-02-28","2022-03-31","2022-04-30","2022-05-31","2022-06-30","2022-07-31","2022-08-31","2022-09-30","2022-10-31","2022-11-30","2022-12-31","2023-01-31","2023-02-28","2023-03-31","2023-04-30","2023-05-31","2023-06-30","2023-07-31","2023-08-31","2023-09-30","2023-10-31","2023-11-30","2023-12-31","2024-01-31","2024-02-29","2024-03-31","2024-04-30","2024-05-31","2024-06-30","2024-07-31","2024-08-31","2024-09-30","2024-10-31","2024-11-30","2024-12-31","2025-01-31","2025-02-28","2025-03-31","2025-04-30","2025-05-31","2025-06-30","2025-07-31","2025-08-31","2025-09-30","2025-10-31","2025-11-30","2025-12-31","2026-01-31","2026-02-28","2026-03-31","2026-04-30","2026-05-31","2026-06-30"],"values":[488418.36,490483.99,493015.99,495180.38,497887.71,499750.88,502006.44,504840.24,507378.43,509144.32,509207.56,509851.64,510377.83,510605.54,510257.93,510070.23,511666.06,513741.4,516070.27,517605.32,519222.14,521409.53,522774.37,523562.31,523365.34,523539.15,523887.38,524940.56,526996.91,529960.6,533328.35,535929.98,538680.79,540257.88,542292.24,543722.51,545225.29,546605.77,547776.05,550136.92,553332.96,556480.28,557777.72,557778.26,557517.95,558507.36,560113.05,562150.69,564120.9,566199.4,569127.37,572666.28,576848.51,581012.38,586488.76,592953.79,600533.92,606906.04,610054.51,609967.94,609594.93,613008.9,621383.07,632081.45,643794.81,655739.54,668581.54,684358.44,704842.79,731194.37,763298.64,795956.64,823179.16,839387.0,847706.0,854848.55,865488.82,879287.73,898868.98,924534.32,960379.3,997435.35,1028677.71,1047040.89,1046432.92,1030294.44,1002818.59,980348.5,965055.39,954403.16,939651.87,922366.43,906428.81,897449.47,892931.37,889380.1,884386.08,877984.59,872513.93,864358.23,855221.0,844145.39,835500.41,829719.55,827837.14,827617.44,825954.15,819721.56,812816.79,806459.36,804072.34,801321.14,796452.75,790043.5,783547.02,779060.32,774521.73,770676.74,766054.07,760282.84,755199.41,752448.33,751991.5,752482.37,751004.99,747465.09,742594.34,738539.76,734858.07,730393.28,727505.42,727003.98]}},"rent":{"latest":1863.86,"as_of":"2026-06-30","cagr_1y":-1.32,"cagr_5y":1.18,"level":"zip","history":{"dates":["2020-07-31","2020-08-31","2020-09-30","2020-10-31","2020-11-30","2020-12-31","2021-01-31","2021-02-28","2021-03-31","2021-04-30","2021-05-31","2021-06-30","2021-07-31","2021-08-31","2021-09-30","2021-10-31","2021-11-30","2021-12-31","2022-01-31","2022-02-28","2022-03-31","2022-04-30","2022-05-31","2022-06-30","2022-07-31","2022-08-31","2022-09-30","2022-10-31","2022-11-30","2022-12-31","2023-01-31","2023-02-28","2023-03-31","2023-04-30","2023-05-31","2023-06-30","2023-07-31","2023-08-31","2023-09-30","2023-10-31","2023-11-30","2023-12-31","2024-01-31","2024-02-29","2024-03-31","2024-04-30","2024-05-31","2024-06-30","2024-07-31","2024-08-31","2024-09-30","2024-10-31","2024-11-30","2024-12-31","2025-01-31","2025-02-28","2025-03-31","2025-04-30","2025-05-31","2025-06-30","2025-07-31","2025-08-31","2025-09-30","2025-10-31","2025-11-30","2025-12-31","2026-01-31","2026-02-28","2026-03-31","2026-04-30","2026-05-31","2026-06-30"],"values":[1544.68,1545.79,1542.3,1529.11,1523.85,1529.0,1542.88,1572.19,1605.3,1645.9,1695.24,1757.99,1821.78,1870.6,1886.85,1883.28,1865.32,1865.77,1879.67,1910.86,1937.27,1957.17,1990.54,2024.44,2061.51,2049.64,2023.52,1983.1,1963.99,1951.74,1957.8,1962.77,1972.38,1968.03,1966.82,1976.21,1986.8,1976.66,1937.34,1902.42,1877.4,1875.01,1861.86,1860.55,1857.32,1862.58,1873.44,1882.51,1884.73,1862.04,1834.83,1817.79,1814.08,1832.23,1849.13,1864.76,1866.59,1874.29,1887.17,1888.73,1888.98,1874.86,1862.48,1843.46,1826.62,1827.72,1819.82,1824.51,1823.56,1843.2,1857.28,1863.86]}}},"fundamentals":{"county":"Travis County","state":"TX","score":54,"label":"Mixed","findings":[{"signal":"Days on market","value":"78 days","verdict":"bad","text":"Homes in this ZIP list for a median of 78 days, 8% slower than a year ago. A slow market cuts both ways: easier to buy, harder to exit."},{"signal":"Pending ratio","value":"0.16","verdict":"bad","text":"0.16 homes are under contract for every one still active in this ZIP \u2014 listings are accumulating faster than they clear."},{"signal":"House prices (FHFA)","value":"-1.7% year over year","verdict":"bad","text":"The FHFA all-transactions index for this county moved -1.7% in the latest year."},{"signal":"Migration","value":"-4.8 per 1,000","verdict":"bad","text":"Census measures net domestic migration of -4.8 per 1,000 county residents \u00b7 U-Haul ranks TX #1 of 50 for net inbound one-way moves in 2025."},{"signal":"Job growth","value":"+0.1% year over year","verdict":"neutral","text":"Employment is roughly flat (+0.1% year over year)."},{"signal":"Unemployment","value":"4.0% vs 4.1% nationally","verdict":"neutral","text":"Unemployment of 4.0% runs 0.1 pts below the national 4.1%."},{"signal":"Inventory","value":"-18% year over year","verdict":"good","text":"Active listings in this ZIP are down 18% year over year."},{"signal":"Price cuts","value":"24% of listings","verdict":"good","text":"24% of active listings in this ZIP have cut their price."},{"signal":"Income growth","value":"+5.1% year over year","verdict":"good","text":"Per-capita income moved +5.1% \u2014 rent growth cannot outrun this for long."},{"signal":"Population","value":"+1.4%/yr since 2020","verdict":"good","text":"The county's population has grown 1.4%/yr since 2020 to 1,389,670."}],"demographics":{"county":"Travis County","state":"Texas","population":1389670,"as_of":"2025","growth_pct_per_year":1.4,"growth_since":"2020","net_domestic_migration":-6590,"net_domestic_migration_per_1k":-4.77,"source":"Census Population Estimates Program, county vintage 2025"},"uhaul":{"state":"TX","rank":1,"of":50,"rank_prior_year":2,"rank_change":1,"year":2025,"published":"2026-01-05","source":"U-Haul Growth Index (annual press release, uhaul.com/Articles/About/)","methodology":"Net gain/loss of one-way truck, trailer and U-Box arrivals vs departures as share of total one-way traffic; >2.5M annual one-way transactions US+Canada.","note":"U-Haul publishes this only as an annual press release \u2014 there is no API or data file, so this is a dated snapshot. It measures one-way truck rentals, a self-selected sample skewed toward DIY movers, and it is state-level: it describes the region, not the neighborhood. Treat it as directional.","top_metros":["Dallas, TX","Houston, TX","Austin, TX","Charlotte, NC","Phoenix, AZ","Nashville, TN","Charleston, SC","Raleigh, NC","Atlanta, GA","Brownsville & McAllen, TX"]},"zip_listings":{"zip":"78704","name":"austin, tx","as_of":"2026-07","median_list_price":799000.0,"median_list_price_yoy_pct":-7.359999999999999,"days_on_market":78.0,"days_on_market_yoy_pct":8.39,"active_listings":349.0,"active_listings_yoy_pct":-17.69,"new_listings":64.0,"price_cut_share_pct":23.53,"price_per_sqft":531.0,"median_sqft":1594.0,"pending_ratio":0.1648,"source":"Realtor.com Research, ZIP-level core inventory metrics"},"rent_benchmarks":{"zip":"78704","area":"Austin-Round Rock-San Marcos, TX MSA","by_bedroom":{"0":1670,"1":1770,"2":2100,"3":2660,"4":3130},"year":"FY2026","source":"HUD Small Area Fair Market Rents FY2026","note":"HUD's FMR is the 40th percentile of standard-quality rents \u2014 a conservative floor for a market-rate unit in good condition, not a median. Computed independently of Zillow, so agreement between the two is real corroboration."},"permits":15059.0,"permits_year":"2025","trends":{"employment":{"latest":842590.0,"as_of":"2026-06-01","history":{"dates":["2021-06-01","2021-07-01","2021-08-01","2021-09-01","2021-10-01","2021-11-01","2021-12-01","2022-01-01","2022-02-01","2022-03-01","2022-04-01","2022-05-01","2022-06-01","2022-07-01","2022-08-01","2022-09-01","2022-10-01","2022-11-01","2022-12-01","2023-01-01","2023-02-01","2023-03-01","2023-04-01","2023-05-01","2023-06-01","2023-07-01","2023-08-01","2023-09-01","2023-10-01","2023-11-01","2023-12-01","2024-01-01","2024-02-01","2024-03-01","2024-04-01","2024-05-01","2024-06-01","2024-07-01","2024-08-01","2024-09-01","2024-10-01","2024-11-01","2024-12-01","2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01","2025-07-01","2025-08-01","2025-09-01","2025-11-01","2025-12-01","2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01","2026-06-01"],"values":[726406.0,735802.0,737196.0,742971.0,753754.0,763036.0,764861.0,755451.0,763701.0,769330.0,773395.0,774175.0,777207.0,781468.0,783570.0,786756.0,792825.0,795867.0,798284.0,787025.0,794327.0,800460.0,803064.0,799160.0,804675.0,804249.0,804038.0,805830.0,811034.0,818281.0,813672.0,804640.0,810798.0,815457.0,819986.0,816874.0,820835.0,822241.0,820038.0,827301.0,829043.0,830396.0,832716.0,832489.0,833422.0,837908.0,845172.0,839484.0,841561.0,839955.0,838724.0,844597.0,845220.0,847271.0,837868.0,840833.0,841642.0,843420.0,844462.0,842590.0]}},"days_on_market":{"latest":69.0,"as_of":"2026-07-01","history":{"dates":["2021-08-01","2021-09-01","2021-10-01","2021-11-01","2021-12-01","2022-01-01","2022-02-01","2022-03-01","2022-04-01","2022-05-01","2022-06-01","2022-07-01","2022-08-01","2022-09-01","2022-10-01","2022-11-01","2022-12-01","2023-01-01","2023-02-01","2023-03-01","2023-04-01","2023-05-01","2023-06-01","2023-07-01","2023-08-01","2023-09-01","2023-10-01","2023-11-01","2023-12-01","2024-01-01","2024-02-01","2024-03-01","2024-04-01","2024-05-01","2024-06-01","2024-07-01","2024-08-01","2024-09-01","2024-10-01","2024-11-01","2024-12-01","2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01","2025-07-01","2025-08-01","2025-09-01","2025-10-01","2025-11-01","2025-12-01","2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01","2026-06-01","2026-07-01"],"values":[23.0,28.0,30.0,37.0,46.0,43.0,17.0,14.0,15.0,16.0,22.0,29.0,39.0,49.0,51.0,58.0,71.0,76.0,60.0,45.0,43.0,43.0,45.0,50.0,57.0,58.0,60.0,65.0,75.0,79.0,63.0,43.0,42.0,44.0,53.0,61.0,70.0,75.0,75.0,78.0,84.0,83.0,63.0,44.0,43.0,47.0,58.0,67.0,73.0,79.0,79.0,80.0,87.0,88.0,70.0,49.0,48.0,57.0,63.0,69.0]}},"active_listings":{"latest":6362.0,"as_of":"2026-07-01","history":{"dates":["2021-08-01","2021-09-01","2021-10-01","2021-11-01","2021-12-01","2022-01-01","2022-02-01","2022-03-01","2022-04-01","2022-05-01","2022-06-01","2022-07-01","2022-08-01","2022-09-01","2022-10-01","2022-11-01","2022-12-01","2023-01-01","2023-02-01","2023-03-01","2023-04-01","2023-05-01","2023-06-01","2023-07-01","2023-08-01","2023-09-01","2023-10-01","2023-11-01","2023-12-01","2024-01-01","2024-02-01","2024-03-01","2024-04-01","2024-05-01","2024-06-01","2024-07-01","2024-08-01","2024-09-01","2024-10-01","2024-11-01","2024-12-01","2025-01-01","2025-02-01","2025-03-01","2025-04-01","2025-05-01","2025-06-01","2025-07-01","2025-08-01","2025-09-01","2025-10-01","2025-11-01","2025-12-01","2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01","2026-06-01","2026-07-01"],"values":[1798.0,1954.0,1883.0,1586.0,1149.0,810.0,679.0,799.0,1004.0,1719.0,2649.0,3640.0,3970.0,4111.0,4250.0,4052.0,3374.0,2970.0,2933.0,3246.0,3712.0,4015.0,4395.0,4554.0,4549.0,4608.0,4648.0,4544.0,3874.0,3368.0,3468.0,4011.0,4803.0,5432.0,5959.0,6030.0,5736.0,5694.0,5489.0,5166.0,4201.0,3781.0,4081.0,4787.0,5931.0,6767.0,7076.0,7005.0,6558.0,6247.0,5978.0,5465.0,4616.0,4095.0,4391.0,5040.0,5644.0,6139.0,6332.0,6362.0]}}}},"parcel_report":{"supported":false,"county":null,"source":null,"verified":null,"non_disclosure_state":true,"note":"No parcel adapter is configured for this county. Assessor records have no national API \u2014 each county publishes its own service \u2014 so this county needs a one-time mapping added to data/county_parcels.json.","reason":"no_adapter","candidate_layers":[{"title":"CityParcels_OpenSpace","owner":"PARD_Planning_Admin","url":"https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/CityParcels_OpenSpace/FeatureServer"},{"title":"Austin Data","owner":"taldulai_asu","url":"https://services3.arcgis.com/0OPQIK59PJJqLK0A/arcgis/rest/services/Austin_Data/FeatureServer"},{"title":"UnregisteredAddresses","owner":"tgmnation","url":"https://taxmaps.traviscountytx.gov/arcgis/rest/services/UnregisteredAddresses/UnregisteredAddresses/FeatureServer"}],"subject":null,"comps":null}}],"rates":{"thirty_year":6.69,"as_of":"2026-08-06","fifteen_year":6.01,"history":{"dates":["2024-08-15","2024-08-22","2024-08-29","2024-09-05","2024-09-12","2024-09-19","2024-09-26","2024-10-03","2024-10-10","2024-10-17","2024-10-24","2024-10-31","2024-11-07","2024-11-14","2024-11-21","2024-11-27","2024-12-05","2024-12-12","2024-12-19","2024-12-26","2025-01-02","2025-01-09","2025-01-16","2025-01-23","2025-01-30","2025-02-06","2025-02-13","2025-02-20","2025-02-27","2025-03-06","2025-03-13","2025-03-20","2025-03-27","2025-04-03","2025-04-10","2025-04-17","2025-04-24","2025-05-01","2025-05-08","2025-05-15","2025-05-22","2025-05-29","2025-06-05","2025-06-12","2025-06-18","2025-06-26","2025-07-03","2025-07-10","2025-07-17","2025-07-24","2025-07-31","2025-08-07","2025-08-14","2025-08-21","2025-08-28","2025-09-04","2025-09-11","2025-09-18","2025-09-25","2025-10-02","2025-10-09","2025-10-16","2025-10-23","2025-10-30","2025-11-06","2025-11-13","2025-11-20","2025-11-26","2025-12-04","2025-12-11","2025-12-18","2025-12-24","2025-12-31","2026-01-08","2026-01-15","2026-01-22","2026-01-29","2026-02-05","2026-02-12","2026-02-19","2026-02-26","2026-03-05","2026-03-12","2026-03-19","2026-03-26","2026-04-02","2026-04-09","2026-04-16","2026-04-23","2026-04-30","2026-05-07","2026-05-14","2026-05-21","2026-05-28","2026-06-04","2026-06-11","2026-06-18","2026-06-25","2026-07-02","2026-07-09","2026-07-16","2026-07-23","2026-07-30","2026-08-06"],"values":[6.49,6.46,6.35,6.35,6.2,6.09,6.08,6.12,6.32,6.44,6.54,6.72,6.79,6.78,6.84,6.81,6.69,6.6,6.72,6.85,6.91,6.93,7.04,6.96,6.95,6.89,6.87,6.85,6.76,6.63,6.65,6.67,6.65,6.64,6.62,6.83,6.81,6.76,6.76,6.81,6.86,6.89,6.85,6.84,6.81,6.77,6.67,6.72,6.75,6.74,6.72,6.63,6.58,6.58,6.56,6.5,6.35,6.26,6.3,6.34,6.3,6.27,6.19,6.17,6.22,6.24,6.26,6.23,6.19,6.22,6.21,6.18,6.15,6.16,6.06,6.09,6.1,6.11,6.09,6.01,5.98,6.0,6.11,6.22,6.38,6.46,6.37,6.3,6.23,6.3,6.37,6.36,6.51,6.53,6.48,6.52,6.47,6.49,6.43,6.49,6.55,6.58,6.66,6.69]}}};
+
+/* ---------------------------------------------------------- formatting */
+const $ = (id) => document.getElementById(id);
+const usd = (n, dp = 0) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString("en-US",
+  {minimumFractionDigits: dp, maximumFractionDigits: dp});
+const compact = (n) => {
+  const a = Math.abs(n), s = n < 0 ? "-" : "";
+  if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M";
+  if (a >= 1e3) return s + "$" + Math.round(a / 1e3) + "K";
+  return s + "$" + Math.round(a);
+};
+const countFmt = (n) => {
+  const a = Math.abs(n);
+  if (a >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (a >= 1e5) return Math.round(n / 1e3) + "K";
+  return Math.round(n).toLocaleString("en-US");
+};
+const pct = (n, dp = 1) => (n === null || n === undefined) ? "—" : n.toFixed(dp) + "%";
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g,
+  (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* ------------------------------------------------- the underwriting math
+   A direct port of app/analysis.py. Same formulas, same thresholds, same
+   weights — verified against the Python implementation output. */
+
+function monthlyPayment(principal, annualRatePct, years) {
+  if (principal <= 0) return 0;
+  const n = years * 12, r = annualRatePct / 100 / 12;
+  if (r === 0) return principal / n;
+  return principal * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
+}
+
+function loanBalance(principal, annualRatePct, years, monthsElapsed) {
+  if (principal <= 0) return 0;
+  const n = years * 12, m = Math.min(monthsElapsed, n), r = annualRatePct / 100 / 12;
+  if (r === 0) return principal * (1 - m / n);
+  const pmt = monthlyPayment(principal, annualRatePct, years);
+  return principal * Math.pow(1 + r, m) - pmt * ((Math.pow(1 + r, m) - 1) / r);
+}
+
+function irr(flows, lo = -0.99, hi = 10.0) {
+  const npv = (rate) => flows.reduce((s, cf, t) => s + cf / Math.pow(1 + rate, t), 0);
+  let fLo = npv(lo);
+  if (fLo * npv(hi) > 0) return null;
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2, fMid = npv(mid);
+    if (Math.abs(fMid) < 1e-9) return mid;
+    if (fLo * fMid < 0) hi = mid; else { lo = mid; fLo = fMid; }
+  }
+  return (lo + hi) / 2;
+}
+
+function band(value, poor, good) {
+  if (value === null || value === undefined) return 0;
+  if (good > poor) return Math.max(0, Math.min(1, (value - poor) / (good - poor)));
+  return Math.max(0, Math.min(1, (poor - value) / (poor - good)));
+}
+
+// Mirrors the defaults on DealInputs in analysis.py, so a partial input object
+// yields the same answer here as it does from the Python API rather than NaN.
+const ANALYSIS_DEFAULTS = {
+  down_payment_pct: 20, interest_rate_pct: 6.5, loan_term_years: 30, closing_costs_pct: 3,
+  rehab_cost: 0, after_repair_value: 0, monthly_rent: 0, other_monthly_income: 0,
+  vacancy_pct: 5, property_tax_rate_pct: 1.1, annual_insurance: 1500, maintenance_pct: 5,
+  capex_pct: 5, management_pct: 8, monthly_hoa: 0, monthly_utilities: 0,
+  other_monthly_expenses: 0, annual_rent_growth_pct: 3, annual_appreciation_pct: 3.5,
+  annual_expense_growth_pct: 2.5, holding_period_years: 10, selling_costs_pct: 7,
+};
+
+function analyze(input) {
+  const i = {...ANALYSIS_DEFAULTS, ...input};
+  for (const [k, v] of Object.entries(i)) {
+    if (typeof v !== "number" || !Number.isFinite(v)) i[k] = ANALYSIS_DEFAULTS[k] ?? 0;
+  }
+  const price = i.purchase_price;
+  const downPayment = price * i.down_payment_pct / 100;
+  const loanAmount = price - downPayment;
+  const closingCosts = price * i.closing_costs_pct / 100;
+  const cashInvested = downPayment + closingCosts + i.rehab_cost;
+  const basis = price + i.rehab_cost;
+  const startValue = i.after_repair_value > 0 ? i.after_repair_value : basis;
+
+  const pi = monthlyPayment(loanAmount, i.interest_rate_pct, i.loan_term_years);
+  const debtService = pi * 12;
+
+  const grossRent = i.monthly_rent * 12;
+  const otherIncome = i.other_monthly_income * 12;
+  const vacancyLoss = grossRent * i.vacancy_pct / 100;
+  const egi = grossRent + otherIncome - vacancyLoss;
+
+  const propertyTax = startValue * i.property_tax_rate_pct / 100;
+  const maintenance = grossRent * i.maintenance_pct / 100;
+  const capex = grossRent * i.capex_pct / 100;
+  const management = (grossRent - vacancyLoss) * i.management_pct / 100;
+  const fixed = i.annual_insurance + (i.monthly_hoa + i.monthly_utilities + i.other_monthly_expenses) * 12;
+  const opex = propertyTax + maintenance + capex + management + fixed;
+
+  const noi = egi - opex;
+  const annualCashFlow = noi - debtService;
+  const monthlyCashFlow = annualCashFlow / 12;
+
+  const capRate = startValue ? noi / startValue * 100 : null;
+  const coc = cashInvested > 0 ? annualCashFlow / cashInvested * 100 : null;
+  const dscr = debtService > 0 ? noi / debtService : null;
+  const grm = grossRent > 0 ? price / grossRent : null;
+  const onePct = price ? i.monthly_rent / price * 100 : null;
+  const expenseRatio = egi > 0 ? opex / egi * 100 : null;
+  const breakEven = (grossRent + otherIncome) > 0 ? (opex + debtService) / (grossRent + otherIncome) * 100 : null;
+
+  const years = [];
+  const flows = [-cashInvested];
+  let value = startValue, rentY = grossRent, otherY = otherIncome;
+  let taxY = propertyTax, fixedY = fixed, cumulative = 0, saleProceeds = 0;
+
+  for (let year = 1; year <= i.holding_period_years; year++) {
+    if (year > 1) {
+      rentY *= 1 + i.annual_rent_growth_pct / 100;
+      otherY *= 1 + i.annual_rent_growth_pct / 100;
+      fixedY *= 1 + i.annual_expense_growth_pct / 100;
+      value *= 1 + i.annual_appreciation_pct / 100;
+      taxY = value * i.property_tax_rate_pct / 100;
+    }
+    const vacY = rentY * i.vacancy_pct / 100;
+    const egiY = rentY + otherY - vacY;
+    const opexY = taxY + fixedY + rentY * (i.maintenance_pct + i.capex_pct) / 100
+      + (rentY - vacY) * i.management_pct / 100;
+    const noiY = egiY - opexY;
+    const debtY = year * 12 <= i.loan_term_years * 12 ? debtService : 0;
+    const cfY = noiY - debtY;
+    cumulative += cfY;
+    const balance = loanBalance(loanAmount, i.interest_rate_pct, i.loan_term_years, year * 12);
+    years.push({
+      year, property_value: value, gross_rent: rentY, noi: noiY, cash_flow: cfY,
+      cumulative_cash_flow: cumulative, loan_balance: balance, equity: value - balance,
+    });
+    flows.push(cfY);
+  }
+  if (years.length) {
+    const final = years[years.length - 1];
+    const endValue = final.property_value * (1 + i.annual_appreciation_pct / 100);
+    saleProceeds = endValue * (1 - i.selling_costs_pct / 100) - final.loan_balance;
+    flows[flows.length - 1] += saleProceeds;
+  }
+  const totalProfit = flows.reduce((a, b) => a + b, 0);
+  const dealIrr = irr(flows);
+  const equityMultiple = cashInvested > 0
+    ? flows.slice(1).reduce((a, b) => a + b, 0) / cashInvested : null;
+
+  const sensitivity = [];
+  for (const rateShift of [-1, -0.5, 0, 0.5, 1]) {
+    const pmt = monthlyPayment(loanAmount, i.interest_rate_pct + rateShift, i.loan_term_years);
+    const cells = [];
+    for (const rentShift of [-10, -5, 0, 5, 10]) {
+      const rent = i.monthly_rent * (1 + rentShift / 100);
+      const g = rent * 12, vac = g * i.vacancy_pct / 100;
+      const mgmt = (g - vac) * i.management_pct / 100;
+      const ox = propertyTax + fixed + g * (i.maintenance_pct + i.capex_pct) / 100 + mgmt;
+      cells.push({rent_shift: rentShift, monthly_cash_flow: (g + otherIncome - vac - ox - pmt * 12) / 12});
+    }
+    sensitivity.push({rate: i.interest_rate_pct + rateShift, cells});
+  }
+
+  const spread = capRate === null ? null : capRate - i.interest_rate_pct;
+  const score = 100 * (
+    0.35 * band(coc, 0, 8) + 0.25 * band(dscr, 1, 1.4)
+    + 0.20 * band(spread, -2, 1) + 0.20 * band(onePct, 0.4, 1));
+  const label = score >= 70 ? "Strong deal" : score >= 50 ? "Worth pursuing"
+    : score >= 30 ? "Marginal" : "Weak deal";
+
+  const reasons = [];
+  if (monthlyCashFlow >= 200) reasons.push(`Positive cash flow of ${usd(monthlyCashFlow)}/mo after all expenses and reserves.`);
+  else if (monthlyCashFlow >= 0) reasons.push(`Thin cash flow (${usd(monthlyCashFlow)}/mo) — little margin for surprises.`);
+  else reasons.push(`Negative cash flow of -$${Math.abs(monthlyCashFlow).toLocaleString("en-US", {maximumFractionDigits: 0})}/mo — you would feed this property monthly.`);
+  if (dscr !== null) {
+    if (dscr >= 1.25) reasons.push(`DSCR of ${dscr.toFixed(2)} clears the 1.25 threshold most lenders want.`);
+    else if (dscr >= 1) reasons.push(`DSCR of ${dscr.toFixed(2)} is below the 1.25 most lenders prefer — financing may be harder.`);
+    else reasons.push(`DSCR of ${dscr.toFixed(2)}: rental income does not cover the mortgage.`);
+  }
+  if (coc !== null) {
+    if (coc >= 8) reasons.push(`Cash-on-cash return of ${coc.toFixed(1)}% beats typical 8% investor hurdle.`);
+    else if (coc >= 4) reasons.push(`Cash-on-cash return of ${coc.toFixed(1)}% is modest; the deal leans on appreciation.`);
+    else reasons.push(`Cash-on-cash return of ${coc.toFixed(1)}% — returns depend almost entirely on appreciation.`);
+  }
+  if (spread !== null) {
+    if (spread >= 0.5) reasons.push(`Cap rate exceeds your borrowing rate by ${spread.toFixed(1)} pts (positive leverage).`);
+    else if (spread >= -0.5) reasons.push("Cap rate roughly equals the borrowing rate — leverage neither helps nor hurts much.");
+    else reasons.push(`Cap rate is ${Math.abs(spread).toFixed(1)} pts below the borrowing rate (negative leverage).`);
+  }
+  if (onePct !== null) reasons.push(`Rent-to-price is ${onePct.toFixed(2)}% vs the classic 1% rule of thumb.`);
+
+  return {
+    acquisition: {down_payment: downPayment, loan_amount: loanAmount, closing_costs: closingCosts,
+      rehab_cost: i.rehab_cost, total_cash_invested: cashInvested, monthly_pi_payment: pi},
+    year_one: {gross_rent: grossRent, other_income: otherIncome, vacancy_loss: vacancyLoss,
+      effective_gross_income: egi,
+      expenses: {property_tax: propertyTax, insurance: i.annual_insurance, maintenance,
+        capex_reserve: capex, management, hoa: i.monthly_hoa * 12,
+        utilities: i.monthly_utilities * 12, other: i.other_monthly_expenses * 12, total: opex},
+      noi, annual_debt_service: debtService, annual_cash_flow: annualCashFlow, monthly_cash_flow: monthlyCashFlow},
+    metrics: {cap_rate_pct: capRate, cash_on_cash_pct: coc, dscr, gross_rent_multiplier: grm,
+      rent_to_price_pct: onePct, operating_expense_ratio_pct: expenseRatio,
+      break_even_occupancy_pct: breakEven, cap_rate_vs_rate_spread: spread},
+    projection: {years, sale_year: i.holding_period_years, net_sale_proceeds: saleProceeds,
+      total_profit: totalProfit, irr_pct: dealIrr === null ? null : dealIrr * 100, equity_multiple: equityMultiple},
+    sensitivity,
+    verdict: {score: Math.round(score), label, reasons},
+  };
+}
+
+/* ----------------------------------------------------------- deal inputs */
+const FIELDS = [
+  {group: "Purchase & financing", items: [
+    ["purchase_price", "Purchase price", 1000], ["down_payment_pct", "Down payment %", 0.5],
+    ["interest_rate_pct", "Interest rate %", 0.05], ["loan_term_years", "Loan term (yrs)", 1],
+    ["closing_costs_pct", "Closing costs %", 0.25], ["rehab_cost", "Rehab budget", 1000],
+    ["after_repair_value", "After-repair value", 1000]]},
+  {group: "Income", items: [
+    ["monthly_rent", "Monthly rent", 25], ["other_monthly_income", "Other income /mo", 10],
+    ["vacancy_pct", "Vacancy %", 0.5]]},
+  {group: "Operating expenses", items: [
+    ["property_tax_rate_pct", "Property tax %/yr", 0.05], ["annual_insurance", "Insurance /yr", 50],
+    ["maintenance_pct", "Maintenance % rent", 0.5], ["capex_pct", "CapEx reserve % rent", 0.5],
+    ["management_pct", "Management % rent", 0.5], ["monthly_hoa", "HOA /mo", 10],
+    ["monthly_utilities", "Utilities /mo", 10], ["other_monthly_expenses", "Other /mo", 10]]},
+  {group: "Projection assumptions", items: [
+    ["annual_appreciation_pct", "Appreciation %/yr", 0.1], ["annual_rent_growth_pct", "Rent growth %/yr", 0.1],
+    ["annual_expense_growth_pct", "Expense growth %/yr", 0.1], ["holding_period_years", "Holding period (yrs)", 1],
+    ["selling_costs_pct", "Selling costs %", 0.5]]},
+];
+const ALL_FIELDS = FIELDS.flatMap((g) => g.items.map((x) => x[0]));
+const BASE_DEFAULTS = {
+  down_payment_pct: 20, loan_term_years: 30, closing_costs_pct: 3, rehab_cost: 0,
+  after_repair_value: 0, other_monthly_income: 0, vacancy_pct: 5, annual_insurance: 1500,
+  maintenance_pct: 5, capex_pct: 5, management_pct: 8, monthly_hoa: 0, monthly_utilities: 0,
+  other_monthly_expenses: 0, annual_expense_growth_pct: 2.5, holding_period_years: 10,
+  selling_costs_pct: 7,
+};
+const HINT_AFTER = {interest_rate_pct: "rate", monthly_rent: "rent",
+  property_tax_rate_pct: "tax", annual_appreciation_pct: "appr"};
+
+let current = DATA.properties[0];
+let result = null;
+let projectionView = "chart";
+
+function buildForm() {
+  $("form").innerHTML = FIELDS.map((g) => `<fieldset>
+    <legend>${esc(g.group)}</legend>
+    ${g.items.map(([id, label, step]) => `<div class="row">
+        <label for="${id}">${esc(label)}</label>
+        <input id="${id}" type="number" step="${step}" inputmode="decimal">
+      </div>${HINT_AFTER[id] ? `<div class="hint" id="hint-${HINT_AFTER[id]}"></div>` : ""}`).join("")}
+  </fieldset>`).join("");
+  ALL_FIELDS.forEach((f) => $(f).addEventListener("input", schedule));
+}
+
+function applyDefaults() {
+  const s = current.suggested_inputs;
+  const vals = {...BASE_DEFAULTS, ...s};
+  for (const f of ALL_FIELDS) {
+    const v = vals[f];
+    $(f).value = v === null || v === undefined ? 0 : Math.round(v * 100) / 100;
+  }
+}
+
+function readInputs() {
+  const o = {};
+  for (const f of ALL_FIELDS) {
+    const v = parseFloat($(f).value);
+    o[f] = Number.isFinite(v) ? v : 0;
+  }
+  return o;
+}
+
+let timer = null;
+function schedule() { clearTimeout(timer); timer = setTimeout(run, 160); }
+function run() {
+  const inputs = readInputs();
+  if (!(inputs.purchase_price > 0)) return;
+  result = analyze(inputs);
+  render();
+}
+
+/* --------------------------------------------------------------- charts */
+function lineChart(el, cfg) {
+  const W = Math.max(el.clientWidth || 640, 260), H = cfg.height || 240;
+  const P = {t: 14, r: cfg.padRight ?? 54, b: 26, l: cfg.padLeft ?? 56};
+  const iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const all = cfg.series.flatMap((s) => s.values);
+  let min = Math.min(...all), max = Math.max(...all);
+  if (cfg.zeroBase) min = Math.min(0, min);
+  if (min === max) { min -= 1; max += 1; }
+  const pad = (max - min) * 0.08; min -= pad; max += pad;
+  const n = cfg.labels.length;
+  const x = (i) => P.l + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw);
+  const y = (v) => P.t + ih - ((v - min) / (max - min)) * ih;
+
+  const ticks = [];
+  const rawStep = (max - min) / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= rawStep) || mag * 10;
+  for (let t = Math.ceil(min / step) * step; t <= max; t += step) ticks.push(t);
+
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", cfg.ariaLabel || "");
+  const add = (tag, attrs, text) => {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (text !== undefined) e.textContent = text;
+    svg.appendChild(e); return e;
+  };
+
+  for (const t of ticks) {
+    add("line", {x1: P.l, x2: P.l + iw, y1: y(t), y2: y(t), stroke: cssVar("--rule"), "stroke-width": 1});
+    add("text", {x: P.l - 8, y: y(t) + 4, "text-anchor": "end", fill: cssVar("--ink-3"),
+      "font-size": 11, "font-variant-numeric": "tabular-nums"}, cfg.fmtAxis(t));
+  }
+  add("line", {x1: P.l, x2: P.l + iw, y1: P.t + ih, y2: P.t + ih, stroke: cssVar("--axis"), "stroke-width": 1});
+  if (min < 0 && max > 0) add("line", {x1: P.l, x2: P.l + iw, y1: y(0), y2: y(0), stroke: cssVar("--axis"), "stroke-width": 1});
+
+  const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 72))));
+  cfg.labels.forEach((lab, i) => {
+    if (i % every === 0 || i === n - 1) {
+      add("text", {x: x(i), y: H - 8, "text-anchor": "middle", fill: cssVar("--ink-3"), "font-size": 11}, lab);
+    }
+  });
+
+  cfg.series.forEach((s) => {
+    const color = cssVar(s.color);
+    if (s.area) {
+      const d = s.values.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ")
+        + ` L${x(n - 1)},${y(Math.max(min, 0))} L${x(0)},${y(Math.max(min, 0))} Z`;
+      add("path", {d, fill: color, "fill-opacity": 0.1, stroke: "none"});
+    }
+    add("path", {d: s.values.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" "),
+      fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"});
+    const li = n - 1;
+    add("circle", {cx: x(li), cy: y(s.values[li]), r: 4.5, fill: color, stroke: cssVar("--surface"), "stroke-width": 2});
+    if (s.endLabel) {
+      add("text", {x: x(li) + 9, y: y(s.values[li]) + 4, fill: cssVar("--ink-2"),
+        "font-size": 11.5, "font-weight": 550}, cfg.fmtAxis(s.values[li]));
+    }
+  });
+
+  el.innerHTML = ""; el.appendChild(svg);
+
+  const tip = document.createElement("div");
+  tip.className = "tip"; el.appendChild(tip);
+  const cross = add("line", {x1: 0, x2: 0, y1: P.t, y2: P.t + ih, stroke: cssVar("--axis"), "stroke-width": 1, opacity: 0});
+  const dots = cfg.series.map((s) => add("circle", {r: 4.5, fill: cssVar(s.color),
+    stroke: cssVar("--surface"), "stroke-width": 2, opacity: 0}));
+  const hit = add("rect", {x: P.l, y: P.t, width: iw, height: ih, fill: "transparent"});
+  hit.style.cursor = "crosshair";
+
+  const show = (i) => {
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", 1);
+    cfg.series.forEach((s, k) => {
+      dots[k].setAttribute("cx", x(i)); dots[k].setAttribute("cy", y(s.values[i])); dots[k].setAttribute("opacity", 1);
+    });
+    tip.innerHTML = `<div class="th">${esc(cfg.tipTitle ? cfg.tipTitle(i) : cfg.labels[i])}</div>`
+      + cfg.series.map((s) => `<div class="tr"><span><i class="sw" style="background:${cssVar(s.color)}"></i>${esc(s.name)}</span><span>${esc(cfg.fmtTip(s.values[i]))}</span></div>`).join("");
+    tip.style.opacity = 1;
+    const scale = el.clientWidth / W;
+    tip.style.left = Math.min(Math.max(x(i) * scale + 12, 0), el.clientWidth - tip.offsetWidth - 4) + "px";
+    tip.style.top = P.t * scale + "px";
+  };
+  const hide = () => { tip.style.opacity = 0; cross.setAttribute("opacity", 0); dots.forEach((d) => d.setAttribute("opacity", 0)); };
+  hit.addEventListener("mousemove", (ev) => {
+    const rect = el.getBoundingClientRect();
+    const px = (ev.clientX - rect.left) / (el.clientWidth / W);
+    show(Math.max(0, Math.min(n - 1, Math.round(((px - P.l) / iw) * (n - 1)))));
+  });
+  hit.addEventListener("mouseleave", hide);
+  el.tabIndex = 0;
+  let focus = n - 1;
+  el.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowRight") { focus = Math.min(n - 1, focus + 1); show(focus); ev.preventDefault(); }
+    if (ev.key === "ArrowLeft") { focus = Math.max(0, focus - 1); show(focus); ev.preventDefault(); }
+    if (ev.key === "Escape") hide();
+  });
+  el.addEventListener("blur", hide);
+}
+
+const legendHTML = (items) => `<div class="legend">` + items.map((i) =>
+  `<span class="item"><span class="key" style="background:${cssVar(i.color)}"></span>${esc(i.name)}</span>`).join("") + `</div>`;
+
+function hexToRgb(h) {
+  h = h.replace("#", "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+}
+function divergingColor(v, maxAbs) {
+  const t = Math.min(1, Math.abs(v) / (maxAbs || 1));
+  const mid = hexToRgb(cssVar("--div-mid"));
+  const pole = hexToRgb(cssVar(v >= 0 ? "--div-pos" : "--div-neg"));
+  return {css: `rgb(${mid.map((c, i) => Math.round(c + (pole[i] - c) * t)).join(",")})`, strong: t > 0.55};
+}
+
+/* --------------------------------------------------------------- render */
+const tile = (k, v, d) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+const proRow = (name, annual, sub, cls) =>
+  `<tr class="${cls || ""}${sub ? " sub" : ""}"><td>${name}</td>` +
+  `<td class="${annual < 0 ? "neg" : ""}">${usd(annual)}</td>` +
+  `<td class="${annual < 0 ? "neg" : ""}">${usd(annual / 12)}</td></tr>`;
+
+function render() {
+  const r = result, out = [];
+  const cf = r.year_one.monthly_cash_flow, v = r.verdict;
+  const statusVar = v.score >= 70 ? "--good" : v.score >= 50 ? "--s1" : v.score >= 30 ? "--warn" : "--bad";
+
+  out.push(`<div class="card">
+    <div class="verdict">
+      <div class="hero">
+        <div class="label">Monthly cash flow</div>
+        <div class="fig" style="color:${cf < 0 ? cssVar("--bad") : "inherit"}">${usd(cf)}</div>
+        <div class="cap">after all expenses, reserves and debt service</div>
+        <div class="pill"><span class="dot" style="background:${cssVar(statusVar)}"></span>${esc(v.label)} · ${v.score}/100</div>
+      </div>
+      <ul class="reasons" style="--icon:${cssVar(statusVar)}">${v.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+    </div>
+    <div class="tiles">
+      ${tile("Cap rate", pct(r.metrics.cap_rate_pct), "NOI ÷ property value")}
+      ${tile("Cash-on-cash", pct(r.metrics.cash_on_cash_pct), `on ${usd(r.acquisition.total_cash_invested)} invested`)}
+      ${tile("DSCR", r.metrics.dscr === null ? "—" : r.metrics.dscr.toFixed(2), "lenders want ≥ 1.25")}
+      ${tile(`${r.projection.sale_year}-yr IRR`, pct(r.projection.irr_pct), "incl. sale proceeds")}
+      ${tile("Rent-to-price", pct(r.metrics.rent_to_price_pct, 2), "the “1% rule”")}
+      ${tile("Break-even occupancy", pct(r.metrics.break_even_occupancy_pct), "of gross rent")}
+    </div>
+  </div>`);
+
+  out.push(parcelCard());
+
+  const e = r.year_one.expenses;
+  out.push(`<div class="card">
+    <h2>Year-one pro forma</h2>
+    <p class="sub">What the property earns and spends in its first full year of operation.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Line item</th><th>Annual</th><th>Monthly</th></tr></thead>
+      <tbody>
+        ${proRow("Gross scheduled rent", r.year_one.gross_rent)}
+        ${r.year_one.other_income ? proRow("Other income", r.year_one.other_income, true) : ""}
+        ${proRow("Vacancy loss", -r.year_one.vacancy_loss, true)}
+        ${proRow("Effective gross income", r.year_one.effective_gross_income, false, "total")}
+        <tr class="spacer"><td colspan="3"></td></tr>
+        ${proRow("Property tax", -e.property_tax, true)}
+        ${proRow("Insurance", -e.insurance, true)}
+        ${proRow("Maintenance", -e.maintenance, true)}
+        ${proRow("CapEx reserve", -e.capex_reserve, true)}
+        ${proRow("Property management", -e.management, true)}
+        ${e.hoa ? proRow("HOA", -e.hoa, true) : ""}
+        ${e.utilities ? proRow("Utilities", -e.utilities, true) : ""}
+        ${e.other ? proRow("Other", -e.other, true) : ""}
+        ${proRow("Operating expenses", -e.total, false, "total")}
+        <tr class="spacer"><td colspan="3"></td></tr>
+        ${proRow("Net operating income", r.year_one.noi, false, "total")}
+        ${proRow("Debt service", -r.year_one.annual_debt_service, true)}
+        ${proRow("Cash flow", r.year_one.annual_cash_flow, false, "total")}
+      </tbody>
+    </table></div>
+    <div class="tiles">
+      ${tile("Cash to close", usd(r.acquisition.total_cash_invested), `${usd(r.acquisition.down_payment)} down + ${usd(r.acquisition.closing_costs)} costs${r.acquisition.rehab_cost ? " + rehab" : ""}`)}
+      ${tile("Loan amount", usd(r.acquisition.loan_amount), `${usd(r.acquisition.monthly_pi_payment)}/mo P&amp;I`)}
+      ${tile("Operating expense ratio", pct(r.metrics.operating_expense_ratio_pct), "of effective gross income")}
+      ${tile("Gross rent multiplier", r.metrics.gross_rent_multiplier === null ? "—" : r.metrics.gross_rent_multiplier.toFixed(1) + "×", "price ÷ annual rent")}
+    </div>
+  </div>`);
+
+  const last = r.projection.years[r.projection.years.length - 1];
+  out.push(`<div class="card">
+    <div class="head">
+      <div>
+        <h2>Equity and cash-flow projection</h2>
+        <p class="sub">Property value, remaining loan balance and your equity over a ${r.projection.sale_year}-year hold. All figures in dollars.</p>
+      </div>
+      <div class="toggle" role="group" aria-label="Projection view">
+        <button type="button" data-view="chart" aria-pressed="${projectionView === "chart"}">Chart</button>
+        <button type="button" data-view="table" aria-pressed="${projectionView === "table"}">Table</button>
+      </div>
+    </div>
+    <div id="projection-body"></div>
+    <div class="tiles">
+      ${tile("Net sale proceeds", compact(r.projection.net_sale_proceeds), `year ${r.projection.sale_year}, after selling costs`)}
+      ${tile("Total profit", compact(r.projection.total_profit), "cash flow + sale, less cash in")}
+      ${tile("Equity multiple", r.projection.equity_multiple === null ? "—" : r.projection.equity_multiple.toFixed(2) + "×", "cash out ÷ cash in")}
+      ${tile("Cumulative cash flow", compact(last.cumulative_cash_flow), "before sale")}
+    </div>
+  </div>`);
+
+  out.push(`<div class="card">
+    <h2>What if you are wrong?</h2>
+    <p class="sub">Monthly cash flow if rent lands differently than expected (columns) or you lock a different rate (rows). Blue is positive, red is negative.</p>
+    <div class="scroll">${sensitivityTable(r)}</div>
+  </div>`);
+
+  out.push(fundamentalsCard());
+  out.push(marketCard());
+
+  $("results").innerHTML = out.join("");
+  renderProjection();
+  document.querySelectorAll(".toggle button[data-view]").forEach((b) => {
+    b.addEventListener("click", () => {
+      projectionView = b.dataset.view;
+      document.querySelectorAll(".toggle button[data-view]").forEach((x) =>
+        x.setAttribute("aria-pressed", String(x.dataset.view === projectionView)));
+      renderProjection();
+    });
+  });
+  renderMarketCharts();
+  renderFundCharts();
+  renderHints();
+}
+
+function renderProjection() {
+  const host = $("projection-body");
+  if (!host) return;
+  const yrs = result.projection.years;
+  if (projectionView === "table") {
+    host.innerHTML = `<div class="scroll"><table>
+      <thead><tr><th>Year</th><th>Value</th><th>Loan balance</th><th>Equity</th><th>NOI</th><th>Cash flow</th><th>Cumulative</th></tr></thead>
+      <tbody>${yrs.map((y) => `<tr><td>${y.year}</td><td>${usd(y.property_value)}</td><td>${usd(y.loan_balance)}</td>
+        <td>${usd(y.equity)}</td><td>${usd(y.noi)}</td>
+        <td class="${y.cash_flow < 0 ? "neg" : ""}">${usd(y.cash_flow)}</td>
+        <td class="${y.cumulative_cash_flow < 0 ? "neg" : ""}">${usd(y.cumulative_cash_flow)}</td></tr>`).join("")}</tbody>
+    </table></div>`;
+    return;
+  }
+  const series = [
+    {name: "Property value", color: "--s1", values: yrs.map((y) => y.property_value)},
+    {name: "Equity", color: "--s3", values: yrs.map((y) => y.equity), endLabel: true},
+    {name: "Loan balance", color: "--s2", values: yrs.map((y) => y.loan_balance)},
+  ];
+  host.innerHTML = legendHTML(series) + `<div class="chart-wrap" id="proj-chart"></div>`;
+  lineChart($("proj-chart"), {
+    labels: yrs.map((y) => "Yr " + y.year), series, height: 260, zeroBase: true,
+    fmtAxis: compact, fmtTip: (v) => usd(v), tipTitle: (i) => "Year " + yrs[i].year,
+    ariaLabel: "Property value, equity and loan balance by year. A table view is available.",
+  });
+}
+
+function sensitivityTable(r) {
+  const cells = r.sensitivity.flatMap((row) => row.cells.map((c) => c.monthly_cash_flow));
+  const maxAbs = Math.max(...cells.map(Math.abs), 1);
+  const shifts = r.sensitivity[0].cells.map((c) => c.rent_shift);
+  let html = `<table class="heat"><caption class="sr">Monthly cash flow by mortgage rate and rent change</caption>
+    <thead><tr><th></th>${shifts.map((s) => `<th>${s > 0 ? "+" : ""}${s}% rent</th>`).join("")}</tr></thead><tbody>`;
+  for (const row of r.sensitivity) {
+    html += `<tr><th>${row.rate.toFixed(2)}%</th>` + row.cells.map((c) => {
+      const {css, strong} = divergingColor(c.monthly_cash_flow, maxAbs);
+      return `<td class="cell" style="background:${css};color:${strong ? "#fff" : cssVar("--ink")}">${usd(c.monthly_cash_flow)}</td>`;
+    }).join("") + `</tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
+/* ------------------------------------------------------- parcel & comps */
+function parcelCard() {
+  const pr = current.parcel_report, s = pr.subject, c = pr.comps || {};
+  if (!pr.supported) {
+    return `<div class="card">
+      <h2>Property record — not available for this county</h2>
+      <p class="sub">${esc(pr.note)}</p>
+      ${pr.non_disclosure_state ? `<p class="hint flag">This is also a non-disclosure state: sale prices are not public record here, so recorded comps would be unavailable even with an adapter.</p>` : ""}
+      ${(pr.candidate_layers || []).length ? `<p class="sub" style="margin-top:12px">Candidate parcel layers the app found for this county:</p>
+        <ul class="sources">${pr.candidate_layers.map((x) => `<li>${esc(x.title)} <span style="opacity:.75">(${esc(x.owner)})</span><br><code>${esc(x.url)}</code></li>`).join("")}</ul>` : ""}
+    </div>`;
+  }
+  if (!s) {
+    return `<div class="card"><h2>The property on record</h2>
+      <p class="sub">${esc(pr.note || "No parcel matched this address in the county's records.")}</p></div>`;
+  }
+  const tiles = [];
+  if (s.market_value) tiles.push(tile("Assessor market value", usd(s.market_value),
+    `${esc(pr.county)}${s.tax_year ? `, tax year ${s.tax_year}` : ""}`));
+  if (s.living_area) tiles.push(tile("Living area", `${countFmt(s.living_area)} sq ft`,
+    s.value_per_sqft ? `${usd(s.value_per_sqft)}/sq ft assessed` : "per county record"));
+  if (s.lot_acres) tiles.push(tile("Lot", `${s.lot_acres} ac`,
+    `${countFmt(s.lot_acres * 43560)} sq ft${s.zoning ? ` · zoned ${esc(s.zoning)}` : ""}`));
+  if (s.rooms) tiles.push(tile("Rooms", String(s.rooms), s.land_use ? esc(String(s.land_use).toLowerCase()) : "total rooms"));
+  if (s.last_sale_price) tiles.push(tile("Last recorded sale", usd(s.last_sale_price), s.last_sale_date || "date not recorded"));
+
+  return `<div class="card">
+    <div class="head">
+      <div>
+        <h2>The property on record</h2>
+        <p class="sub">What ${esc(pr.county)} says about this specific parcel${s.match === "nearest" ? " — nearest parcel, the exact address did not match" : ""}.</p>
+      </div>
+      ${s.parcel_id ? `<span class="tag-pill">Parcel ${esc(s.parcel_id)}</span>` : ""}
+    </div>
+    <div class="tiles">${tiles.join("")}</div>
+    ${triangulation(s, c)}
+    ${compsBlock(c)}
+    <ul class="sources">
+      <li>Parcel record: ${esc(pr.source || pr.county)}${pr.verified ? ` · adapter verified ${esc(pr.verified)}` : ""}.</li>
+      ${c.available ? `<li>Comparable sales: recorded deed transfers from the same source. Not MLS — public records cannot flag a distressed or non-arm's-length sale.</li>` : ""}
+    </ul>
+  </div>`;
+}
+
+function triangulation(s, c) {
+  const entered = parseFloat($("purchase_price").value) || 0;
+  const zip = current.market.home_value.latest;
+  const rows = [
+    {k: "Your purchase price", v: entered, me: true},
+    {k: "County assessor", v: s.market_value, note: s.tax_year ? `tax year ${s.tax_year}` : ""},
+    {k: "Recorded comps", v: c.implied_value, note: c.implied_value ? `median ${usd(c.median_price_per_sqft)}/sq ft` : ""},
+    {k: "ZIP median home", v: zip, note: "Zillow ZHVI, all homes"},
+  ].filter((r) => r.v > 0);
+  if (rows.length < 2) return "";
+  const max = Math.max(...rows.map((r) => r.v));
+  return `<div style="margin-top:20px">
+    <h2>What is it worth?</h2>
+    <p class="sub">Independent estimates of this property's value. They are built from different data and will not agree — the spread is the useful part.</p>
+    <div class="vbars">${rows.map((r) => `<div class="vrow${r.me ? " me" : ""}">
+      <span class="vk">${esc(r.k)}</span>
+      <span class="vtrack"><span class="vfill" style="width:${(r.v / max * 100).toFixed(1)}%"></span></span>
+      <span class="vv">${usd(r.v)}</span><span class="vn">${esc(r.note || "")}</span></div>`).join("")}</div>
+    ${c.implied_value_low ? `<p class="hint" style="margin-top:12px">Comps put this property between ${usd(c.implied_value_low)} and ${usd(c.implied_value_high)} across the middle half of nearby sale prices per square foot.</p>` : ""}
+  </div>`;
+}
+
+function compsBlock(c) {
+  if (!c || !c.available) {
+    return `<div style="margin-top:20px"><h2>Comparable sales</h2>
+      <p class="sub">${esc((c && c.note) || "No recorded sales available.")}</p></div>`;
+  }
+  return `<div style="margin-top:20px">
+    <h2>Comparable sales</h2>
+    <p class="sub">Recorded transfers within ${c.radius_m} m over the past ${c.years} years, sized within 40% of this property. ${c.qualifying} qualified${c.outliers_excluded ? `, ${c.outliers_excluded} excluded from the median as extreme` : ""}.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Address</th><th>Sold</th><th>Price</th><th>Sq ft</th><th>$/sq ft</th></tr></thead>
+      <tbody>${c.comps.map((x) => `<tr${x.outlier ? ' class="dim"' : ""}>
+        <td>${esc((x.address || "").replace(/\s+/g, " "))}${x.outlier ? ' <span class="tag">excluded</span>' : ""}</td>
+        <td>${esc(x.last_sale_date)}</td><td>${usd(x.last_sale_price)}</td>
+        <td>${countFmt(x.living_area)}</td><td>${usd(x.sale_price_per_sqft)}</td></tr>`).join("")}</tbody>
+    </table></div>
+    <p class="hint">${esc(c.dispersion_note || "")}</p>
+  </div>`;
+}
+
+/* --------------------------------------------------------- fundamentals */
+const GLYPH = {good: "▲", neutral: "—", bad: "▼"};
+const VCOLOR = {good: "--good", neutral: "--ink-3", bad: "--bad"};
+
+function fundamentalsCard() {
+  const f = current.fundamentals, z = f.zip_listings, dem = f.demographics;
+  const band = f.score >= 70 ? "--good" : f.score >= 55 ? "--s1" : f.score >= 40 ? "--warn" : "--bad";
+  const tiles = [];
+  if (dem) {
+    tiles.push(tile("County population", dem.population.toLocaleString(),
+      `${dem.growth_pct_per_year >= 0 ? "+" : ""}${dem.growth_pct_per_year}%/yr since ${dem.growth_since}`));
+    if (dem.net_domestic_migration_per_1k !== null && dem.net_domestic_migration_per_1k !== undefined) {
+      tiles.push(tile("Net domestic migration", `${dem.net_domestic_migration_per_1k > 0 ? "+" : ""}${dem.net_domestic_migration_per_1k}`,
+        `per 1,000 residents · ${dem.net_domestic_migration.toLocaleString()} people, ${dem.as_of}`));
+    }
+  }
+  if (z) {
+    if (z.median_list_price) tiles.push(tile("Median list price (ZIP)", usd(z.median_list_price),
+      `Realtor.com, ${z.as_of}${z.price_per_sqft ? ` · ${usd(z.price_per_sqft)}/sq ft` : ""}`));
+    if (z.days_on_market != null) tiles.push(tile("Days on market (ZIP)", z.days_on_market.toFixed(0),
+      z.days_on_market_yoy_pct != null ? `${z.days_on_market_yoy_pct > 0 ? "+" : ""}${z.days_on_market_yoy_pct.toFixed(0)}% vs last year` : "median"));
+    if (z.price_cut_share_pct != null) tiles.push(tile("Listings with a price cut", pct(z.price_cut_share_pct, 0), `in this ZIP, ${z.as_of}`));
+  }
+  if (f.permits) tiles.push(tile("New units permitted", Math.round(f.permits).toLocaleString(), `county, ${f.permits_year}`));
+
+  return `<div class="card">
+    <div class="head">
+      <div>
+        <h2>Market fundamentals — ${esc(f.county)}${f.state ? ", " + esc(f.state) : ""}</h2>
+        <p class="sub">Whether this market will still support the rent in year five. The deal math above assumes it does.</p>
+      </div>
+      <div class="pill" style="margin:0"><span class="dot" style="background:${cssVar(band)}"></span>${esc(f.label)} · ${f.score}/100</div>
+    </div>
+    <ul class="findings">${f.findings.map((x) => `<li>
+      <span class="fg" style="color:${cssVar(VCOLOR[x.verdict])}" aria-hidden="true">${GLYPH[x.verdict]}</span>
+      <span class="fb"><span class="fsig">${esc(x.signal)}</span><span class="fval">${esc(x.value)}</span>
+      <span class="ftxt">${esc(x.text)}</span></span></li>`).join("")}</ul>
+    <div class="tiles">${tiles.join("")}</div>
+    ${rentCheck()}
+    <div style="margin-top:20px">
+      <h2>County trends</h2>
+      <p class="sub">Employment and listing history for ${esc(f.county)}. The ZIP readings above are current-month; these show direction.</p>
+      <div class="smalls" id="fund-charts"></div>
+    </div>
+    ${f.uhaul ? `<ul class="sources"><li>Migration context: ${esc(f.uhaul.source)}, ${f.uhaul.year} — ${esc(f.state)} ranked #${f.uhaul.rank} of ${f.uhaul.of}. ${esc(f.uhaul.note)}</li></ul>` : ""}
+  </div>`;
+}
+
+function rentCheck() {
+  const b = current.fundamentals.rent_benchmarks;
+  const zori = current.market.rent ? current.market.rent.latest : null;
+  if (!b && !zori) return "";
+  const entered = parseFloat($("monthly_rent").value) || 0;
+  const beds = b ? Object.entries(b.by_bedroom) : [];
+  return `<div style="margin-top:20px">
+    <h2>Rent reality check</h2>
+    <p class="sub">Two independent readings of what this ZIP rents for. You entered <strong>${usd(entered)}</strong>/mo.</p>
+    <div class="scroll"><table class="bench"><tbody>
+      ${zori ? `<tr><th>Zillow ZORI<span class="bs">all unit types, ${esc(current.market.rent.as_of)}</span></th>
+        <td class="cell wide"><span class="bv">${usd(zori)}</span><span class="bk">typical asking rent</span></td>
+        <td class="note" colspan="4">${entered ? `Your figure is ${Math.abs(entered / zori - 1) * 100 < 1 ? "in line with it" : `${(Math.abs(entered / zori - 1) * 100).toFixed(0)}% ${entered > zori ? "above" : "below"} it`}.` : ""}</td></tr>` : ""}
+      ${b ? `<tr><th>HUD Small Area FMR<span class="bs">${esc(b.year)}, by bedroom count</span></th>
+        ${beds.map(([n, v]) => `<td class="cell"><span class="bk">${n === "0" ? "Studio" : n + " bed"}</span><span class="bv">${usd(v)}</span></td>`).join("")}</tr>` : ""}
+    </tbody></table></div>
+    ${b ? `<p class="hint" style="margin-top:8px">${esc(b.note)}</p>` : ""}
+  </div>`;
+}
+
+function renderFundCharts() {
+  const host = $("fund-charts");
+  if (!host) return;
+  const t = current.fundamentals.trends || {};
+  const specs = [
+    {key: "employment", title: "Employed residents", color: "--s1", fmt: countFmt},
+    {key: "days_on_market", title: "Median days on market", color: "--s2", fmt: (v) => v.toFixed(0)},
+    {key: "active_listings", title: "Active listings", color: "--s3", fmt: countFmt},
+  ].filter((s) => t[s.key] && t[s.key].history.values.length);
+  if (!specs.length) { host.innerHTML = ""; return; }
+  host.innerHTML = specs.map((s, i) => `<div class="small"><div class="st">${s.title}</div><div class="chart-wrap" id="fc${i}"></div></div>`).join("");
+  specs.forEach((s, i) => {
+    const d = t[s.key];
+    lineChart($(`fc${i}`), {
+      labels: d.history.dates.map((x) => x.slice(0, 7)),
+      series: [{name: s.title, color: s.color, values: d.history.values, area: true, endLabel: true}],
+      height: 150, padLeft: 46, padRight: 52, fmtAxis: s.fmt, fmtTip: s.fmt,
+      ariaLabel: `${s.title} history for ${current.fundamentals.county}.`,
+    });
+  });
+}
+
+/* -------------------------------------------------------- market context */
+function marketCard() {
+  const m = current.market, hv = m.home_value, rent = m.rent, p2r = m.price_to_rent;
+  const p2rNote = p2r === null || p2r === undefined ? "" : p2r < 15 ? "favors buying to rent out"
+    : p2r < 21 ? "balanced market" : "rent-cheap market — cash flow is hard here";
+  const g = current.geocode;
+  return `<div class="card">
+    <h2>Market context — ${esc(m.city || "")}${m.state ? ", " + esc(m.state) : ""} ${esc(m.zip || "")}</h2>
+    <p class="sub">Public data for this market. These figures drove the suggested inputs; every one is editable.</p>
+    <div class="tiles">
+      ${tile("Typical home value", usd(hv.latest), `Zillow ZHVI, ${hv.as_of}`)}
+      ${tile("Past year", pct(hv.cagr_1y), "change in typical value")}
+      ${tile("Typical rent", rent ? usd(rent.latest) : "—", rent ? `Zillow ZORI (${rent.level}), ${rent.as_of}` : "no data")}
+      ${tile("Price-to-rent", p2r == null ? "—" : p2r.toFixed(1) + "×", p2rNote)}
+    </div>
+    ${current.tract_hpi ? `<div class="tiles">
+      ${tile("Neighborhood price index", String(current.tract_hpi.index), `FHFA, census tract ${esc(current.tract_hpi.tract)}, ${current.tract_hpi.as_of}`)}
+      ${tile("Tract, past year", pct(current.tract_hpi.change_1y_pct), "vs the ZIP as a whole")}
+      ${tile("Tract, 10-year", pct(current.tract_hpi.cagr_10y) + "/yr", "compound annual growth")}
+      ${tile("ZIP, 10-year", pct(hv.cagr_10y) + "/yr", "Zillow ZHVI")}
+    </div>` : ""}
+    <div style="margin-top:18px">
+      <h2>Typical home value</h2>
+      <p class="sub">Zillow Home Value Index, ${esc(hv.history.dates[0])} to ${esc(hv.as_of)}.</p>
+      <div class="chart-wrap" id="zhvi-chart"></div>
+    </div>
+    <div style="margin-top:22px">
+      <h2>30-year fixed mortgage rate</h2>
+      <p class="sub">Freddie Mac survey average via FRED, two years to ${esc(DATA.rates.as_of)}.</p>
+      <div class="chart-wrap" id="rate-chart"></div>
+    </div>
+    <ul class="sources">
+      <li>Address resolved by ${esc(g.source)} to census tract ${esc(g.tract || "n/a")} in ${esc(g.county)}.</li>
+      <li>Home values &amp; rents: ${esc(m.source)}.</li>
+      <li>Property tax: ${esc((m.tax || {}).note || "")}</li>
+      <li>Suggested appreciation: ${esc(current.provenance.appreciation)}.</li>
+      <li>Purchase price default: ${esc(current.provenance.purchase_price)}.</li>
+    </ul>
+    <p class="disclaim">Pre-income-tax analysis based on your assumptions and public market data. Not financial advice — verify taxes, insurance, rents and condition locally.</p>
+  </div>`;
+}
+
+function renderMarketCharts() {
+  const hv = current.market.home_value;
+  if ($("zhvi-chart") && hv.history.values.length) {
+    lineChart($("zhvi-chart"), {
+      labels: hv.history.dates.map((d) => d.slice(0, 7)),
+      series: [{name: "Typical home value", color: "--s1", values: hv.history.values, area: true, endLabel: true}],
+      height: 210, fmtAxis: compact, fmtTip: (v) => usd(v),
+      ariaLabel: "Zillow Home Value Index history for this market.",
+    });
+  }
+  if ($("rate-chart")) {
+    lineChart($("rate-chart"), {
+      labels: DATA.rates.history.dates.map((d) => d.slice(0, 7)),
+      series: [{name: "30-yr fixed", color: "--s2", values: DATA.rates.history.values, endLabel: true}],
+      height: 190, fmtAxis: (v) => v.toFixed(1) + "%", fmtTip: (v) => v.toFixed(2) + "%",
+      ariaLabel: "30-year fixed mortgage rate over the past two years.",
+    });
+  }
+}
+
+/* --------------------------------------------------------------- hints */
+function renderHints() {
+  const m = current.market;
+  const rentHint = $("hint-rent"), taxHint = $("hint-tax"), rateHint = $("hint-rate"), apprHint = $("hint-appr");
+  if (rentHint && m.rent) {
+    const entered = parseFloat($("monthly_rent").value) || 0;
+    const diff = entered ? (entered / m.rent.latest - 1) * 100 : 0;
+    let txt = `Market rent (Zillow ZORI, ${m.rent.level}): ${usd(m.rent.latest)}/mo.`;
+    rentHint.classList.toggle("flag", Math.abs(diff) >= 12 && !!entered);
+    if (entered && Math.abs(diff) >= 12) txt += ` Your figure is ${Math.abs(diff).toFixed(0)}% ${diff > 0 ? "above" : "below"} it — verify with local comps.`;
+    rentHint.textContent = txt;
+  }
+  if (taxHint && m.tax) taxHint.textContent = `${m.tax.state} average is ${m.tax.effective_rate_pct}% — county rates vary, verify locally.`;
+  if (rateHint) rateHint.textContent = `30-yr fixed average ${DATA.rates.thirty_year}% on ${DATA.rates.as_of} (Freddie Mac via FRED). 15-yr was ${DATA.rates.fifteen_year}%.`;
+  if (apprHint) {
+    const t = current.tract_hpi, hv = m.home_value;
+    apprHint.textContent = t
+      ? `This census tract ran ${pct(t.change_1y_pct)} past year, ${pct(t.cagr_10y)}/yr over 10 (FHFA). The wider ZIP ran ${pct(hv.cagr_10y)}/yr over 10. Suggested value is capped at 5%.`
+      : `This market ran ${pct(hv.cagr_1y)} past year, ${pct(hv.cagr_5y)}/yr over 5, ${pct(hv.cagr_10y)}/yr over 10.`;
+  }
+}
+
+/* ---------------------------------------------------------------- boot */
+function selectProperty(id) {
+  current = DATA.properties.find((p) => p.id === id) || DATA.properties[0];
+  document.querySelectorAll("#seg button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.id === current.id)));
+  const g = current.geocode;
+  $("matched").innerHTML = `Matched <b>${esc(g.matched_address)}</b> · ${esc(g.county)}${g.tract ? ` · tract ${esc(g.tract)}` : ""}`;
+  applyDefaults();
+  run();
+}
+
+$("seg").innerHTML = DATA.properties.map((p) =>
+  `<button type="button" data-id="${p.id}" aria-pressed="false">${esc(p.label)}<span>${esc(p.sub)}</span></button>`).join("");
+document.querySelectorAll("#seg button").forEach((b) =>
+  b.addEventListener("click", () => selectProperty(b.dataset.id)));
+$("reset").addEventListener("click", () => { applyDefaults(); run(); });
+
+buildForm();
+selectProperty(DATA.properties[0].id);
+
+let rt = null;
+window.addEventListener("resize", () => {
+  clearTimeout(rt);
+  rt = setTimeout(() => { if (result) { renderProjection(); renderMarketCharts(); renderFundCharts(); } }, 180);
+});
+</script>

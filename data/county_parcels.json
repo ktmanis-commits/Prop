@@ -16,32 +16,34 @@
       "county": "Cuyahoga County",
       "state": "OH",
       "urls": [
-        "https://gis.cuyahogacounty.us/server/rest/services/CCGIS/Open_Data_Combined_Parcels_WGS84/MapServer/1",
-        "https://gis.cuyahogacounty.us/server/rest/services/CCGIS/Open_Data_Combined_Parcels_WGS84/MapServer/0"
+        "https://gis.cuyahogacounty.gov/server/rest/services/CCFO/Parcel_Fabric_Taxparcels/FeatureServer/0"
       ],
-      "wkid": 102100,
-      "attribution": "Cuyahoga County Fiscal Office / CCGIS open data",
+      "wkid": 4326,
+      "attribution": "Cuyahoga County Fiscal Office, parcel fabric tax parcels",
       "value_basis": "market",
       "verified": "2026-08-12",
       "residential_where": "property_class='R'",
       "fields": {
         "parcel_id": "parcelpin",
         "address": "par_addr_all",
-        "city": "par_city",
-        "zip": "par_zip",
-        "owner": "deeded_owner",
-        "market_value": "gross_certified_total",
+        "city": "parcel_city",
+        "zip": "parcel_zip",
+        "owner": "parcel_owner",
+        "market_value": "tax_market_total",
         "land_value": "gross_certified_land",
         "building_value": "gross_certified_building",
+        "annual_tax": "net_tax_total",
         "living_area": "total_res_liv_area",
         "rooms": "total_res_rooms",
-        "lot_acres": "total_acreage",
+        "year_built": "max_age",
+        "lot_acres": "parcel_acreage",
         "land_use": "tax_luc_description",
         "zoning": "zoning_code",
         "buildings": "res_bldg_count",
-        "last_sale_price": "sales_amount",
-        "last_sale_date": "transfer_date",
-        "tax_year": "tax_year"
+        "last_sale_price": "last_sales_amount",
+        "last_sale_date": "last_transfer_date",
+        "foreclosure_flag": "foreclosure_flag",
+        "tax_year": "cur_tax_year"
       }
     }
   },

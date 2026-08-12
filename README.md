@@ -187,9 +187,9 @@ Three things this layer gets right that a naive implementation does not:
   Zillow's ZIP median before it is trusted.
 
 **Comps come from deed transfers, not the MLS.** That means no photos, no
-condition, no days-on-market, and — critically — no way to tell an arm's-length
-sale from a foreclosure, a family transfer, or a post-renovation flip. The app
-trims outliers beyond a 1.5-IQR fence, shows the discarded rows rather than
+condition and no days-on-market. Where a county publishes a foreclosure flag,
+distressed sales are excluded outright; a family transfer or a post-renovation
+flip still cannot be told from an arm's-length sale. The app trims outliers beyond a 1.5-IQR fence, shows the discarded rows rather than
 hiding them, reports the interquartile range alongside the median, and says all
 of this on the page. In Cleveland's 44105 the surviving comps still run $11 to
 $140 per square foot; the median is a starting point, not an appraisal.
@@ -208,10 +208,12 @@ Three of these are worth knowing before you trust any tool that claims them:
   uses recorded deed transfers from the assessor instead (see above), which
   cover fewer attributes and cannot flag a distressed sale. Anything offering
   true MLS sold comps for free is either scraping or approximating.
-- **A property tax bill.** Assessors publish assessed values, not the levy that
-  produced the bill, and millage varies by school and municipal district within
-  a county. The app uses statewide average effective rates and tells you to
-  verify with the county treasurer.
+- **A property tax bill, in most counties.** Where a county publishes the levied
+  amount — Cuyahoga does — the app uses the real figure, which matters: that
+  county bills 2.34% of market value on the example property against Ohio's
+  1.53% statewide average, a 53% understatement. Counties that publish only an
+  assessed value fall back to the statewide average, and the app says which it
+  used.
 - **The U-Haul Growth Index** has no API or data file. It is an annual press
   release, so it ships here as a dated snapshot in `data/migration.json`, and
   it is a self-selected sample of one-way truck rentals at state resolution.
@@ -273,9 +275,10 @@ app/analysis.py        pure investment math — payments, amortization, IRR, ver
 app/data_sources.py    public data fetchers with disk cache and graceful fallback
 app/market_signals.py  county/ZIP fundamentals: jobs, people, listings, supply
 app/parcels.py         county assessor adapters: subject property and sold comps
+docs/demo.html         self-contained demo with a frozen data snapshot
 app/main.py            FastAPI routes
 static/index.html      single-page UI, no build step and no external dependencies
 data/migration.json    dated U-Haul Growth Index snapshot (no API exists)
 data/county_parcels.json  per-county assessor adapters and field mappings
-tests/                 116 tests, offline by default
+tests/                 124 tests, offline by default
 ```

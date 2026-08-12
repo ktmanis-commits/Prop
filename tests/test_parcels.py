@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.data_sources import DataUnavailable
 from app.main import app
 from app.parcels import (
     _epoch_ms_to_date,
@@ -175,6 +176,81 @@ class TestShaping:
     def test_missing_columns_do_not_raise(self):
         out = _shape({}, self.cfg)
         assert out["address"] is None and out["market_value"] is None
+
+
+class TestTaxAndCondition:
+    cfg = {
+        "fields": {"address": "addr", "market_value": "val", "annual_tax": "tax",
+                   "year_built": "built", "foreclosure_flag": "fc", "living_area": "area"},
+        "value_basis": "market",
+    }
+
+    def test_effective_rate_comes_from_the_actual_bill(self):
+        """The tax a county actually billed beats a statewide average."""
+        out = _shape({"val": 68000, "tax": 1592.06}, self.cfg)
+        assert out["annual_tax"] == 1592.06
+        assert out["effective_tax_rate_pct"] == pytest.approx(2.341, abs=0.001)
+
+    def test_rate_is_none_without_both_numbers(self):
+        assert _shape({"val": 68000}, self.cfg)["effective_tax_rate_pct"] is None
+        assert _shape({"tax": 1592}, self.cfg)["effective_tax_rate_pct"] is None
+
+    def test_year_built_and_foreclosure_flag(self):
+        out = _shape({"built": 1920, "fc": "Y"}, self.cfg)
+        assert out["year_built"] == 1920
+        assert out["in_foreclosure"] is True
+
+    def test_absent_flag_is_not_a_foreclosure(self):
+        for raw in (None, "", "0", "N", "None"):
+            assert _shape({"fc": raw}, self.cfg)["in_foreclosure"] is False
+
+
+class TestOutageHandling:
+    """A county GIS server that is down must not read as 'nothing found'."""
+
+    def _break_service(self, monkeypatch):
+        from app import parcels
+        def boom(url, params):
+            raise DataUnavailable("Service not started")
+        monkeypatch.setattr(parcels, "_query", boom)
+
+    def test_total_failure_raises_rather_than_returning_empty(self, monkeypatch):
+        from app import parcels
+        self._break_service(monkeypatch)
+        with pytest.raises(DataUnavailable) as e:
+            parcels._radius_query(source_for("39035"), -81.6, 41.4, 100)
+        assert "not responding" in str(e.value)
+
+    def test_comps_report_the_outage_distinctly(self, monkeypatch):
+        from app import parcels
+        self._break_service(monkeypatch)
+        out = parcels.nearby_sales("39035", 41.4, -81.6)
+        assert out["reason"] == "source_unavailable"
+        assert out["reason"] != "no_qualifying_sales"
+        assert "not responding" in out["note"]
+
+    def test_report_surfaces_the_outage(self, monkeypatch):
+        from app import parcels
+        self._break_service(monkeypatch)
+        out = parcels.parcel_report("39035", 41.4, -81.6, "1 Main St", "OH", "Cuyahoga County")
+        assert out["supported"] is True, "the county is configured; its server is merely down"
+        assert out["available"] is False
+        assert out["reason"] == "source_unavailable"
+        assert out["subject"] is None
+
+    def test_one_layer_down_is_survivable(self, monkeypatch):
+        """A multi-layer county keeps working when only one layer fails."""
+        from app import parcels
+        cfg = {**source_for("39035"), "urls": ["http://a", "http://b"]}
+        calls = []
+        def flaky(url, params):
+            calls.append(url)
+            if url == "http://a":
+                raise DataUnavailable("down")
+            return [{"par_addr_all": "1 MAIN ST", "tax_market_total": 100000}]
+        monkeypatch.setattr(parcels, "_query", flaky)
+        rows = parcels._radius_query(cfg, -81.6, 41.4, 100)
+        assert len(calls) == 2 and len(rows) == 1
 
 
 class TestEndpoints:
