@@ -149,6 +149,9 @@ def _shape(attrs: dict, cfg: dict) -> dict:
                                    if annual_tax and market else None),
         "year_built": (int(get("year_built")) if get("year_built") not in (None, 0) else None),
         "in_foreclosure": bool(flag) and str(flag).strip() not in ("", "0", "N", "None"),
+        # Counties publish lot size as either acres or square feet; normalise.
+        "lot_sqft": (round(float(get("lot_sqft"))) if get("lot_sqft") not in (None, 0)
+                     else (round(float(get("lot_acres")) * 43560) if get("lot_acres") not in (None, 0) else None)),
         "address": (str(get("address")) if get("address") else None),
         "city": get("city"),
         "zip": str(get("zip")) if get("zip") else None,
@@ -158,8 +161,15 @@ def _shape(attrs: dict, cfg: dict) -> dict:
         "building_value": get("building_value"),
         "living_area": living,
         "rooms": get("rooms"),
-        "lot_acres": get("lot_acres"),
-        "land_use": get("land_use"),
+        "lot_acres": (get("lot_acres") if get("lot_acres") not in (None, 0)
+                      else (round(float(get("lot_sqft")) / 43560, 4) if get("lot_sqft") not in (None, 0) else None)),
+        # Counties publish land use as a coded value; translate where the config
+        # supplies a lookup, and keep the raw code alongside it.
+        "land_use": (cfg.get("land_use_codes", {}).get(str(get("land_use")).strip())
+                     or get("land_use")),
+        "land_use_code": get("land_use"),
+        "legal_description": get("legal_description"),
+        "subdivision": get("subdivision"),
         "zoning": get("zoning"),
         "buildings": get("buildings"),
         "last_sale_price": sale_price,
@@ -203,12 +213,59 @@ def _radius_query(cfg: dict, lon: float, lat: float, radius_m: int,
 
 # ------------------------------------------------------------- public API
 
+def _resolve_via_address_layer(cfg: dict, address: str) -> dict | None:
+    """Some counties keep situs addresses in a separate points layer, joined to
+    the parcel by a key. Where they do, that join is exact — far better than
+    guessing from a street-centerline coordinate."""
+    al = cfg.get("address_layer")
+    if not al or not address:
+        return None
+    number, street = _street_key(address)
+    if not number:
+        return None
+    # Match on house number and street name, which is all the two layers reliably share.
+    where = (f"{al['number_field']}='{number}' AND "
+             f"UPPER({al['street_field']}) LIKE '{street.replace(chr(39), chr(39) * 2)}%'")
+    try:
+        hits = _query(al["url"], {"where": where, "outFields": f"{al['join_field']},{al['address_field']}",
+                                 "resultRecordCount": "5"})
+    except DataUnavailable:
+        return None
+    if not hits:
+        return None
+    key = hits[0].get(al["join_field"])
+    if key in (None, ""):
+        return None
+    quoted = f"'{key}'" if isinstance(key, str) else str(key)
+    out_fields = ",".join(sorted({v for v in cfg["fields"].values() if v}))
+    try:
+        rows = _query(cfg["urls"][0], {"where": f"{al['parcel_join_field']}={quoted}",
+                                      "outFields": out_fields, "resultRecordCount": "5"})
+    except DataUnavailable:
+        return None
+    if not rows:
+        return None
+    best = _shape(rows[0], cfg)
+    # The address layer is the authority on the situs address; the parcel layer
+    # may carry only a legal description.
+    best["address"] = hits[0].get(al["address_field"]) or best.get("address")
+    best["match"] = "address"
+    return best
+
+
 def subject_property(county_fips: str, lat: float, lon: float,
                      address: str | None = None) -> dict | None:
     """The parcel at this address. Searches outward until the address matches."""
     cfg = source_for(county_fips)
     if not cfg:
         return None
+
+    exact = _resolve_via_address_layer(cfg, address or "")
+    if exact:
+        exact["source"] = cfg.get("attribution")
+        exact["county"] = f"{cfg['county']}, {cfg['state']}"
+        return exact
+
     want = _street_key(address)
     for radius in (40, 100, 200):
         rows = _radius_query(cfg, lon, lat, radius)  # raises if the county is down

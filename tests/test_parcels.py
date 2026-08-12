@@ -123,7 +123,15 @@ class TestRegistry:
         for fips, cfg in reg["sources"].items():
             assert len(fips) == 5 and fips.isdigit()
             assert cfg["urls"] and cfg["county"] and cfg["state"]
-            assert "address" in cfg["fields"], "address is the one required field mapping"
+            # A situs address must come from somewhere: the parcel layer itself,
+            # or a companion address-points layer joined to it.
+            assert "address" in cfg["fields"] or cfg.get("address_layer"), \
+                f"{fips} publishes no situs address"
+            if cfg.get("address_layer"):
+                al = cfg["address_layer"]
+                for k in ("url", "number_field", "street_field", "address_field",
+                          "join_field", "parcel_join_field"):
+                    assert al.get(k), f"{fips} address_layer is missing {k}"
             basis = cfg.get("value_basis", "market")
             assert basis == "market" or 0 < float(basis) <= 1
 

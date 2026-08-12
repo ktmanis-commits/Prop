@@ -45,6 +45,50 @@
         "foreclosure_flag": "foreclosure_flag",
         "tax_year": "cur_tax_year"
       }
+    },
+    "48303": {
+      "county": "Lubbock County",
+      "state": "TX",
+      "urls": [
+        "https://pubgis.ci.lubbock.tx.us/server/rest/services/ParcelViewerSearch/MapServer/2"
+      ],
+      "wkid": 4326,
+      "attribution": "City of Lubbock public GIS, parcels valued by Lubbock Central Appraisal District",
+      "value_basis": "market",
+      "verified": "2026-08-12",
+      "residential_where": "SPTB_CODE LIKE 'A%'",
+      "coverage_note": "Covers the City of Lubbock. Texas is a non-disclosure state, so no sale prices are published; the appraisal district's value, land/improvement split and lot size are.",
+      "address_layer": {
+        "url": "https://pubgis.ci.lubbock.tx.us/server/rest/services/ParcelViewerSearch/MapServer/0",
+        "number_field": "ADDR",
+        "street_field": "STREET",
+        "address_field": "FULL_ADDRESS",
+        "join_field": "PIN",
+        "parcel_join_field": "PIN"
+      },
+      "land_use_codes": {
+        "A1": "Single-family residence",
+        "A2": "Mobile home on owned land",
+        "A3": "Residential condominium",
+        "A4": "Residential, other improvement",
+        "B1": "Multifamily, apartment",
+        "B2": "Duplex",
+        "B3": "Triplex",
+        "B4": "Fourplex",
+        "C1": "Vacant residential lot",
+        "F1": "Commercial real property"
+      },
+      "fields": {
+        "parcel_id": "LCADID",
+        "legal_description": "LEGAL_DESCRIPTION",
+        "owner": "OWNER_NAME",
+        "market_value": "TOTALVALUE",
+        "land_value": "LANDVALUE",
+        "building_value": "IMPVALUE",
+        "lot_sqft": "SQUARE_FOOT",
+        "land_use": "SPTB_CODE",
+        "subdivision": "SUBDIVISION"
+      }
     }
   },
   "non_disclosure_states": {

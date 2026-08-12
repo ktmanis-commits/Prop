@@ -241,7 +241,8 @@ def prefill(
             "appreciation": appreciation_basis,
             "purchase_price": (
                 "your asking price" if price and price > 0 else
-                f"{parcel['county']} assessor market value, tax year {parcel.get('tax_year')}"
+                (f"{parcel['county']} assessor market value"
+                 + (f", tax year {parcel['tax_year']}" if parcel.get("tax_year") else ""))
                 if parcel_value else f"Zillow ZHVI ZIP median, {mkt['home_value']['as_of']}"),
         },
     }
