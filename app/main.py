@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import data_sources as ds
+from . import market_signals as ms
 from .analysis import DealInputs, analyze
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -165,6 +166,68 @@ def prefill(zip: str = Query(min_length=5, max_length=5), price: float | None = 
             "property_tax": mkt["tax"]["note"],
             "appreciation": appreciation_basis,
         },
+    }
+
+
+@app.get("/api/fundamentals")
+def fundamentals(
+    zip: str = Query(min_length=5, max_length=5),
+    state: str | None = Query(default=None, description="Two-letter state, for migration context"),
+) -> dict:
+    """Demand-side market health for the county containing this ZIP: jobs,
+    listing velocity, supply pipeline, incomes and migration.
+
+    Separate from /api/prefill because it fans out to a dozen upstream series;
+    the UI loads it alongside the deal so neither blocks the other.
+    """
+    try:
+        return ms.market_report(zip, state)
+    except ds.DataUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/sources")
+def sources() -> dict:
+    """What this app reads, how fresh each source is, and what it costs.
+
+    Exposed so the freshness of an analysis is auditable rather than implied.
+    """
+    return {
+        "keyless": True,
+        "note": ("Every source below is public and needs no API key. Figures are as "
+                 "fresh as the publisher makes them — an API returns the newest "
+                 "vintage instantly, but a monthly series is still monthly."),
+        "sources": [
+            {"name": "Freddie Mac PMMS mortgage rates", "via": "FRED", "cadence": "weekly (Thursday)",
+             "lag": "same week", "used_for": "interest rate default, rate history"},
+            {"name": "Zillow ZHVI home values", "via": "Zillow Research CSV", "cadence": "monthly",
+             "lag": "2-3 weeks", "used_for": "purchase price default, appreciation history"},
+            {"name": "Zillow ZORI market rents", "via": "Zillow Research CSV", "cadence": "monthly",
+             "lag": "2-3 weeks", "used_for": "rent default, rent growth"},
+            {"name": "Realtor.com listing metrics", "via": "FRED (county)", "cadence": "monthly",
+             "lag": "~2 weeks", "used_for": "days on market, inventory, price cuts, $/sqft"},
+            {"name": "BLS Local Area Unemployment Statistics", "via": "FRED (county)", "cadence": "monthly",
+             "lag": "~3 weeks", "used_for": "employment growth, unemployment rate"},
+            {"name": "FHFA House Price Index", "via": "FRED (county)", "cadence": "annual",
+             "lag": "~1 quarter", "used_for": "transaction-based price trend"},
+            {"name": "BEA per-capita personal income", "via": "FRED (county)", "cadence": "annual",
+             "lag": "~1 year", "used_for": "income growth, rent affordability ceiling"},
+            {"name": "Census Building Permits Survey", "via": "FRED (county)", "cadence": "annual",
+             "lag": "~1 quarter", "used_for": "incoming supply"},
+            {"name": "Census ZCTA-to-county crosswalk", "via": "census.gov", "cadence": "decennial",
+             "lag": "static", "used_for": "resolving a ZIP to its county"},
+            {"name": "U-Haul Growth Index", "via": "bundled snapshot", "cadence": "annual press release",
+             "lag": "see migration.json", "used_for": "state migration direction"},
+            {"name": "Census net domestic migration", "via": "bundled snapshot", "cadence": "annual",
+             "lag": "see migration.json", "used_for": "measured state migration"},
+        ],
+        "not_available_publicly": [
+            {"item": "Parcel-level sold comps", "why": "MLS-licensed; no national public feed. "
+             "Use the county assessor's recorded deed transfers or a paid comps API."},
+            {"item": "County assessor parcel and tax records", "why": "No national API — every county "
+             "publishes differently. Many expose ArcGIS REST services; a per-county adapter is needed."},
+            {"item": "Daily mortgage rates", "why": "PMMS is a weekly survey. Daily pricing is commercial."},
+        ],
     }
 
 

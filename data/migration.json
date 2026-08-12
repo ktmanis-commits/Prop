@@ -1,0 +1,340 @@
+{
+  "uhaul_growth_index": {
+    "year": 2025,
+    "published": "2026-01-05",
+    "source": "U-Haul Growth Index (annual press release, uhaul.com/Articles/About/)",
+    "methodology": "Net gain/loss of one-way truck, trailer and U-Box arrivals vs departures as share of total one-way traffic; >2.5M annual one-way transactions US+Canada.",
+    "note": "U-Haul publishes this only as an annual press release \u2014 there is no API or data file, so this is a dated snapshot. It measures one-way truck rentals, a self-selected sample skewed toward DIY movers, and it is state-level: it describes the region, not the neighborhood. Treat it as directional.",
+    "rankings": {
+      "TX": 1,
+      "FL": 2,
+      "NC": 3,
+      "TN": 4,
+      "SC": 5,
+      "WA": 6,
+      "AZ": 7,
+      "ID": 8,
+      "AL": 9,
+      "GA": 10,
+      "OR": 11,
+      "MT": 12,
+      "AR": 13,
+      "OK": 14,
+      "ME": 15,
+      "UT": 16,
+      "KY": 17,
+      "SD": 18,
+      "MN": 19,
+      "NV": 20,
+      "MS": 21,
+      "NM": 22,
+      "CO": 23,
+      "VT": 24,
+      "IN": 25,
+      "WI": 26,
+      "AK": 27,
+      "HI": 28,
+      "MO": 29,
+      "WY": 30,
+      "LA": 31,
+      "NH": 32,
+      "DE": 33,
+      "WV": 34,
+      "IA": 35,
+      "VA": 36,
+      "KS": 37,
+      "ND": 38,
+      "NE": 39,
+      "RI": 40,
+      "MI": 41,
+      "CT": 42,
+      "OH": 43,
+      "PA": 44,
+      "MD": 45,
+      "MA": 46,
+      "NY": 47,
+      "NJ": 48,
+      "IL": 49,
+      "CA": 50
+    },
+    "detail": {
+      "TX": {
+        "rank": 1,
+        "rank_prior_year": 2,
+        "arrivals_pct": 50.7
+      },
+      "FL": {
+        "rank": 2,
+        "rank_prior_year": 4,
+        "arrivals_pct": 50.6
+      },
+      "NC": {
+        "rank": 3,
+        "rank_prior_year": 3,
+        "arrivals_pct": 50.7
+      },
+      "TN": {
+        "rank": 4,
+        "rank_prior_year": 5,
+        "arrivals_pct": 50.8
+      },
+      "SC": {
+        "rank": 5,
+        "rank_prior_year": 1,
+        "arrivals_pct": 51
+      },
+      "WA": {
+        "rank": 6,
+        "rank_prior_year": 7,
+        "arrivals_pct": 50.4
+      },
+      "AZ": {
+        "rank": 7,
+        "rank_prior_year": 6,
+        "arrivals_pct": 50.3
+      },
+      "ID": {
+        "rank": 8,
+        "rank_prior_year": 10,
+        "arrivals_pct": 51
+      },
+      "AL": {
+        "rank": 9,
+        "rank_prior_year": 16,
+        "arrivals_pct": 50.3
+      },
+      "GA": {
+        "rank": 10,
+        "rank_prior_year": 15,
+        "arrivals_pct": 50.2
+      },
+      "OR": {
+        "rank": 11,
+        "rank_prior_year": 34,
+        "arrivals_pct": 50.3
+      },
+      "MT": {
+        "rank": 12,
+        "rank_prior_year": 24,
+        "arrivals_pct": 50.7
+      },
+      "AR": {
+        "rank": 13,
+        "rank_prior_year": 12,
+        "arrivals_pct": 50.4
+      },
+      "OK": {
+        "rank": 14,
+        "rank_prior_year": 11,
+        "arrivals_pct": 50.3
+      },
+      "ME": {
+        "rank": 15,
+        "rank_prior_year": 13,
+        "arrivals_pct": 50.9
+      },
+      "UT": {
+        "rank": 16,
+        "rank_prior_year": 9,
+        "arrivals_pct": 50.3
+      },
+      "KY": {
+        "rank": 17,
+        "rank_prior_year": 25,
+        "arrivals_pct": 50.2
+      },
+      "SD": {
+        "rank": 18,
+        "rank_prior_year": 19,
+        "arrivals_pct": 50.9
+      },
+      "MN": {
+        "rank": 19,
+        "rank_prior_year": 18,
+        "arrivals_pct": 50.2
+      },
+      "NV": {
+        "rank": 20,
+        "rank_prior_year": 35,
+        "arrivals_pct": 50.4
+      },
+      "MS": {
+        "rank": 21,
+        "rank_prior_year": 39,
+        "arrivals_pct": 50.2
+      },
+      "NM": {
+        "rank": 22,
+        "rank_prior_year": 37,
+        "arrivals_pct": 50.1
+      },
+      "CO": {
+        "rank": 23,
+        "rank_prior_year": 40,
+        "arrivals_pct": 50.1
+      },
+      "VT": {
+        "rank": 24,
+        "rank_prior_year": 20,
+        "arrivals_pct": 50.4
+      },
+      "IN": {
+        "rank": 25,
+        "rank_prior_year": 8,
+        "arrivals_pct": 50.1
+      },
+      "WI": {
+        "rank": 26,
+        "rank_prior_year": 22,
+        "arrivals_pct": 50
+      },
+      "AK": {
+        "rank": 27,
+        "rank_prior_year": 27,
+        "arrivals_pct": 49.9
+      },
+      "HI": {
+        "rank": 28,
+        "rank_prior_year": 26,
+        "arrivals_pct": 47.7
+      },
+      "MO": {
+        "rank": 29,
+        "rank_prior_year": 28,
+        "arrivals_pct": 49.9
+      },
+      "WY": {
+        "rank": 30,
+        "rank_prior_year": 36,
+        "arrivals_pct": 49.9
+      },
+      "LA": {
+        "rank": 31,
+        "rank_prior_year": 44,
+        "arrivals_pct": 49.9
+      },
+      "NH": {
+        "rank": 32,
+        "rank_prior_year": 33,
+        "arrivals_pct": 49.8
+      },
+      "DE": {
+        "rank": 33,
+        "rank_prior_year": 21,
+        "arrivals_pct": 49.4
+      },
+      "WV": {
+        "rank": 34,
+        "rank_prior_year": 30,
+        "arrivals_pct": null,
+        "arrivals_pct_note": "omitted: U-Haul's published arrivals and departures do not sum to 100%"
+      },
+      "IA": {
+        "rank": 35,
+        "rank_prior_year": 23,
+        "arrivals_pct": 49.7
+      },
+      "VA": {
+        "rank": 36,
+        "rank_prior_year": 17,
+        "arrivals_pct": 49.9
+      },
+      "KS": {
+        "rank": 37,
+        "rank_prior_year": 32,
+        "arrivals_pct": 49.6
+      },
+      "ND": {
+        "rank": 38,
+        "rank_prior_year": 31,
+        "arrivals_pct": 48.9
+      },
+      "NE": {
+        "rank": 39,
+        "rank_prior_year": 29,
+        "arrivals_pct": 49.3
+      },
+      "RI": {
+        "rank": 40,
+        "rank_prior_year": 38,
+        "arrivals_pct": 48.4
+      },
+      "MI": {
+        "rank": 41,
+        "rank_prior_year": 43,
+        "arrivals_pct": null,
+        "arrivals_pct_note": "omitted: U-Haul's published arrivals and departures do not sum to 100%"
+      },
+      "CT": {
+        "rank": 42,
+        "rank_prior_year": 41,
+        "arrivals_pct": 49
+      },
+      "OH": {
+        "rank": 43,
+        "rank_prior_year": 14,
+        "arrivals_pct": 49.7
+      },
+      "PA": {
+        "rank": 44,
+        "rank_prior_year": 46,
+        "arrivals_pct": 49.7
+      },
+      "MD": {
+        "rank": 45,
+        "rank_prior_year": 42,
+        "arrivals_pct": 49
+      },
+      "MA": {
+        "rank": 46,
+        "rank_prior_year": 49,
+        "arrivals_pct": 48.2
+      },
+      "NY": {
+        "rank": 47,
+        "rank_prior_year": 47,
+        "arrivals_pct": 48.9
+      },
+      "NJ": {
+        "rank": 48,
+        "rank_prior_year": 48,
+        "arrivals_pct": 47.6
+      },
+      "IL": {
+        "rank": 49,
+        "rank_prior_year": 45,
+        "arrivals_pct": 48.9
+      },
+      "CA": {
+        "rank": 50,
+        "rank_prior_year": 50,
+        "arrivals_pct": 49.4
+      }
+    },
+    "top_metros": [
+      "Dallas, TX",
+      "Houston, TX",
+      "Austin, TX",
+      "Charlotte, NC",
+      "Phoenix, AZ",
+      "Nashville, TN",
+      "Charleston, SC",
+      "Raleigh, NC",
+      "Atlanta, GA",
+      "Brownsville & McAllen, TX"
+    ],
+    "top_cities": [
+      "Ocala, FL",
+      "North Port, FL",
+      "Myrtle Beach, SC",
+      "Kissimmee, FL",
+      "Clermont, FL",
+      "McKinney, TX",
+      "Fort Lauderdale, FL",
+      "St. Augustine, FL",
+      "Daytona Beach, FL",
+      "Panama City, FL"
+    ],
+    "data_quality": "arrivals_pct omitted for MI, WV: U-Haul's published figures for these states do not sum to 100% with departures. Ranks are unaffected and used as published."
+  }
+}

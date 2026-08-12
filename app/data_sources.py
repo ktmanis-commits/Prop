@@ -20,6 +20,13 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 CACHE_DIR = DATA_DIR / "cache"
 CACHE_TTL_HOURS = 24
 
+# Cache lifetimes chosen to match how often each source actually publishes.
+# Re-downloading a monthly series hourly costs bandwidth and buys nothing.
+TTL_WEEKLY = 12        # Freddie Mac PMMS posts Thursdays
+TTL_MONTHLY = 24       # Zillow, Realtor.com, BLS monthly series
+TTL_ANNUAL = 24 * 7    # FHFA HPI, BEA income, building permits
+TTL_STATIC = 24 * 90   # geographic crosswalks change with the decennial census
+
 FRED_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}"
 ZILLOW = {
     "metro_zhvi": "https://files.zillowstatic.com/research/public_csvs/zhvi/Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv",
@@ -40,13 +47,15 @@ def _cache_path(name: str) -> Path:
     return CACHE_DIR / f"{name}.csv"
 
 
-def _fresh(path: Path) -> bool:
-    return path.exists() and (time.time() - path.stat().st_mtime) < CACHE_TTL_HOURS * 3600
+def _fresh(path: Path, ttl_hours: float = CACHE_TTL_HOURS) -> bool:
+    return path.exists() and (time.time() - path.stat().st_mtime) < ttl_hours * 3600
 
 
 def _download(url: str, dest: Path) -> None:
     tmp = dest.with_suffix(".tmp")
-    with httpx.stream("GET", url, timeout=120, follow_redirects=True) as r:
+    # www2.census.gov sits behind a WAF that rejects requests with no Referer.
+    headers = {"Referer": "https://www.census.gov/", "User-Agent": "property-investment-analyzer/1.0"}
+    with httpx.stream("GET", url, timeout=120, follow_redirects=True, headers=headers) as r:
         r.raise_for_status()
         with open(tmp, "wb") as f:
             for chunk in r.iter_bytes(1 << 20):
@@ -54,9 +63,9 @@ def _download(url: str, dest: Path) -> None:
     tmp.replace(dest)
 
 
-def _fetch_csv(name: str, url: str) -> Path:
+def _fetch_csv(name: str, url: str, ttl_hours: float = CACHE_TTL_HOURS) -> Path:
     path = _cache_path(name)
-    if _fresh(path):
+    if _fresh(path, ttl_hours):
         return path
     try:
         _download(url, path)
@@ -67,13 +76,37 @@ def _fetch_csv(name: str, url: str) -> Path:
     return path
 
 
+def fred_series(series_id: str, ttl_hours: float = TTL_MONTHLY) -> tuple[list[str], list[float]]:
+    """Fetch one FRED series as (dates, values) via the keyless CSV endpoint.
+
+    FRED mirrors BLS, Census, BEA, FHFA and Realtor.com series, which lets this
+    app read all of them without an API key. Missing observations arrive as "."
+    and are dropped. Raises DataUnavailable when the series does not exist —
+    many county-level series are absent for small or rural counties.
+    """
+    path = _fetch_csv(f"fred_{series_id}", FRED_CSV.format(series=series_id), ttl_hours)
+    try:
+        df = pd.read_csv(path)
+    except Exception as exc:
+        raise DataUnavailable(f"FRED series {series_id} unreadable: {exc}") from exc
+    if df.shape[1] < 2 or "observation_date" not in df.columns[0]:
+        path.unlink(missing_ok=True)  # cached an HTML error page; do not keep it
+        raise DataUnavailable(f"FRED has no series {series_id}.")
+    df.columns = ["date", "value"]
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df.dropna()
+    if df.empty:
+        raise DataUnavailable(f"FRED series {series_id} has no observations.")
+    return df["date"].astype(str).tolist(), df["value"].astype(float).tolist()
+
+
 # ---------------------------------------------------------------- FRED rates
 
 def mortgage_rates() -> dict:
     """Latest 30y/15y fixed rates plus two years of weekly history."""
     out: dict = {"source": "FRED (Freddie Mac Primary Mortgage Market Survey)"}
     for key, series in (("thirty_year", "MORTGAGE30US"), ("fifteen_year", "MORTGAGE15US")):
-        path = _fetch_csv(f"fred_{series}", FRED_CSV.format(series=series))
+        path = _fetch_csv(f"fred_{series}", FRED_CSV.format(series=series), TTL_WEEKLY)
         df = pd.read_csv(path)
         df.columns = ["date", "rate"]
         df["rate"] = pd.to_numeric(df["rate"], errors="coerce")
@@ -231,6 +264,197 @@ def search_metros(query: str, limit: int = 10) -> list[str]:
     zhvi = _load_frame("metro_zhvi")
     match = zhvi[zhvi["RegionName"].str.contains(query, case=False, na=False)]
     return match["RegionName"].head(limit).tolist()
+
+
+# ------------------------------------------------- ZIP -> county geography
+
+ZCTA_COUNTY_URL = ("https://www2.census.gov/geo/docs/maps-data/data/rel2020/"
+                   "zcta520/tab20_zcta520_county20_natl.txt")
+
+# Census Population Estimates Program, county vintage 2025. The modern PEP has
+# no API (the api.census.gov pep/components endpoint stops at vintage 2019 and
+# now requires a key), but the flat file is public and current.
+PEP_COUNTY_URL = ("https://www2.census.gov/programs-surveys/popest/datasets/"
+                  "2020-2025/counties/totals/co-est2025-alldata.csv")
+
+_zcta_map: dict[str, tuple[str, str]] | None = None
+
+
+def zip_to_county(zip_code: str) -> tuple[str, str]:
+    """Map a ZIP to its (county FIPS, county name) using the Census ZCTA-to-county
+    relationship file. A ZIP that straddles counties resolves to the county
+    holding the largest share of its land area."""
+    global _zcta_map
+    if _zcta_map is None:
+        path = _fetch_csv("zcta_county", ZCTA_COUNTY_URL, TTL_STATIC)
+        df = pd.read_csv(path, sep="|", dtype=str, encoding="utf-8-sig",
+                         usecols=["GEOID_ZCTA5_20", "GEOID_COUNTY_20",
+                                  "NAMELSAD_COUNTY_20", "AREALAND_PART"])
+        df = df.dropna(subset=["GEOID_ZCTA5_20", "GEOID_COUNTY_20"])
+        df["AREALAND_PART"] = pd.to_numeric(df["AREALAND_PART"], errors="coerce").fillna(0)
+        df = df.sort_values("AREALAND_PART", ascending=False).drop_duplicates("GEOID_ZCTA5_20")
+        _zcta_map = {
+            r.GEOID_ZCTA5_20.zfill(5): (r.GEOID_COUNTY_20.zfill(5), r.NAMELSAD_COUNTY_20)
+            for r in df.itertuples()
+        }
+    hit = _zcta_map.get(zip_code.strip().zfill(5))
+    if not hit:
+        raise DataUnavailable(f"No county mapping for ZIP {zip_code}.")
+    return hit
+
+
+# ------------------------------------------- ZIP-level listings and rents
+
+REALTOR_ZIP_URL = ("https://econdata.s3-us-west-2.amazonaws.com/Reports/Core/"
+                   "RDC_Inventory_Core_Metrics_Zip.csv")
+# HUD Small Area Fair Market Rents: 40th-percentile standard-quality rents by
+# ZIP and bedroom count. Methodologically independent of Zillow's ZORI, which
+# makes it a genuine second opinion rather than a second helping of the same.
+HUD_SAFMR_URL = ("https://www.huduser.gov/portal/datasets/fmr/fmr2026/"
+                 "fy2026_safmrs_revised.xlsx")
+BROWSER_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+
+_realtor: pd.DataFrame | None = None
+_safmr: pd.DataFrame | None = None
+
+
+def realtor_zip(zip_code: str) -> dict:
+    """Current-month Realtor.com listing metrics for a ZIP, with year-over-year
+    changes. Finer than the county series and published about two weeks after
+    month end."""
+    global _realtor
+    if _realtor is None:
+        path = _fetch_csv("realtor_zip", REALTOR_ZIP_URL, TTL_MONTHLY)
+        _realtor = pd.read_csv(path, dtype={"postal_code": str})
+        _realtor["postal_code"] = _realtor["postal_code"].str.zfill(5)
+    row = _realtor[_realtor["postal_code"] == zip_code.strip().zfill(5)]
+    if row.empty:
+        raise DataUnavailable(f"No Realtor.com listing data for ZIP {zip_code}.")
+    r = row.iloc[0]
+
+    def num(col):
+        v = r.get(col)
+        return None if pd.isna(v) else float(v)
+
+    month = str(int(r["month_date_yyyymm"]))
+    return {
+        "zip": r["postal_code"],
+        "name": r.get("zip_name"),
+        "as_of": f"{month[:4]}-{month[4:]}",
+        "median_list_price": num("median_listing_price"),
+        "median_list_price_yoy_pct": (num("median_listing_price_yy") or 0) * 100
+            if num("median_listing_price_yy") is not None else None,
+        "days_on_market": num("median_days_on_market"),
+        "days_on_market_yoy_pct": (num("median_days_on_market_yy") or 0) * 100
+            if num("median_days_on_market_yy") is not None else None,
+        "active_listings": num("active_listing_count"),
+        "active_listings_yoy_pct": (num("active_listing_count_yy") or 0) * 100
+            if num("active_listing_count_yy") is not None else None,
+        "new_listings": num("new_listing_count"),
+        "price_cut_share_pct": (num("price_reduced_share") or 0) * 100
+            if num("price_reduced_share") is not None else None,
+        "price_per_sqft": num("median_listing_price_per_square_foot"),
+        "median_sqft": num("median_square_feet"),
+        # Pending divided by active: how much of the market is already spoken for.
+        "pending_ratio": num("pending_ratio"),
+        "source": "Realtor.com Research, ZIP-level core inventory metrics",
+    }
+
+
+def hud_safmr(zip_code: str) -> dict:
+    """HUD Small Area Fair Market Rents by bedroom count for a ZIP."""
+    global _safmr
+    if _safmr is None:
+        path = _cache_path("hud_safmr")
+        path = path.with_suffix(".xlsx")
+        if not _fresh(path, TTL_ANNUAL):
+            try:
+                _download_ua(HUD_SAFMR_URL, path)
+            except Exception as exc:
+                if not path.exists():
+                    raise DataUnavailable(f"Could not download HUD SAFMR: {exc}") from exc
+        df = pd.read_excel(path, dtype={"ZIP Code": str}, engine="openpyxl")
+        df.columns = [" ".join(str(c).split()) for c in df.columns]
+        df["ZIP Code"] = df["ZIP Code"].astype(str).str.zfill(5)
+        _safmr = df
+    row = _safmr[_safmr["ZIP Code"] == zip_code.strip().zfill(5)]
+    if row.empty:
+        raise DataUnavailable(f"No HUD Small Area FMR for ZIP {zip_code}.")
+    r = row.iloc[0]
+    beds = {}
+    for n in range(5):
+        v = r.get(f"SAFMR {n}BR")
+        if pd.notna(v):
+            beds[str(n)] = int(v)
+    return {
+        "zip": r["ZIP Code"],
+        "area": r.get("HUD Fair Market Rent Area Name"),
+        "by_bedroom": beds,
+        "year": "FY2026",
+        "source": "HUD Small Area Fair Market Rents FY2026",
+        "note": ("HUD's FMR is the 40th percentile of standard-quality rents — a "
+                 "conservative floor for a market-rate unit in good condition, not a "
+                 "median. Computed independently of Zillow, so agreement between the "
+                 "two is real corroboration."),
+    }
+
+
+def _download_ua(url: str, dest: Path) -> None:
+    """Download with a browser User-Agent. huduser.gov answers 202 with an empty
+    body when the UA looks automated, which reads as a dead link if unhandled."""
+    tmp = dest.with_suffix(".tmp")
+    with httpx.stream("GET", url, timeout=180, follow_redirects=True,
+                      headers={"User-Agent": BROWSER_UA, "Accept": "*/*"}) as r:
+        r.raise_for_status()
+        if r.headers.get("content-length") == "0":
+            raise DataUnavailable("empty response (blocked)")
+        with open(tmp, "wb") as f:
+            for chunk in r.iter_bytes(1 << 20):
+                f.write(chunk)
+    tmp.replace(dest)
+
+
+_pep: pd.DataFrame | None = None
+
+
+def county_population(fips: str) -> dict:
+    """Population estimates and measured net domestic migration for a county.
+
+    Returns the latest population, its compound growth since 2020, and net
+    domestic migration for the latest year both in people and per 1,000
+    residents (Census publishes the rate directly as RDOMESTICMIG).
+    """
+    global _pep
+    if _pep is None:
+        path = _fetch_csv("pep_county", PEP_COUNTY_URL, TTL_ANNUAL)
+        _pep = pd.read_csv(path, encoding="latin-1", dtype={"STATE": str, "COUNTY": str})
+        _pep["fips"] = _pep["STATE"].str.zfill(2) + _pep["COUNTY"].str.zfill(3)
+    row = _pep[_pep["fips"] == fips.zfill(5)]
+    if row.empty:
+        raise DataUnavailable(f"No Census population estimates for county {fips}.")
+    row = row.iloc[0]
+
+    years = sorted(int(c.replace("POPESTIMATE", "")) for c in _pep.columns
+                   if c.startswith("POPESTIMATE") and c[-4:].isdigit())
+    base_year, last_year = years[0], years[-1]
+    base, latest = float(row[f"POPESTIMATE{base_year}"]), float(row[f"POPESTIMATE{last_year}"])
+    span = last_year - base_year
+    cagr = round(((latest / base) ** (1 / span) - 1) * 100, 2) if base > 0 and span else None
+
+    mig = row.get(f"DOMESTICMIG{last_year}")
+    rate = row.get(f"RDOMESTICMIG{last_year}")
+    return {
+        "county": row["CTYNAME"],
+        "state": row["STNAME"],
+        "population": int(latest),
+        "as_of": str(last_year),
+        "growth_pct_per_year": cagr,
+        "growth_since": str(base_year),
+        "net_domestic_migration": int(mig) if pd.notna(mig) else None,
+        "net_domestic_migration_per_1k": round(float(rate), 2) if pd.notna(rate) else None,
+        "source": f"Census Population Estimates Program, county vintage {last_year}",
+    }
 
 
 # ------------------------------------------------------- state property tax

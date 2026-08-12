@@ -209,6 +209,33 @@
   .heat th { font-size: 11.5px; color: var(--text-muted); font-weight: 600; padding: 3px 6px; }
   .heat td.cell { border-radius: 5px; text-align: center; padding: 9px 6px; font-variant-numeric: tabular-nums; font-weight: 550; min-width: 74px; }
 
+  /* ---- fundamentals findings ---- */
+  ul.findings { list-style: none; margin: 14px 0 0; padding: 0; }
+  ul.findings li { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--grid); }
+  ul.findings li:last-child { border-bottom: 0; }
+  .fg { flex: none; width: 15px; text-align: center; font-size: 12px; line-height: 1.5; }
+  .fb { display: grid; grid-template-columns: 170px 128px minmax(0,1fr); gap: 10px; align-items: baseline; flex: 1; }
+  @media (max-width: 760px) { .fb { grid-template-columns: 1fr; gap: 2px; } }
+  .fsig { font-size: 13.5px; font-weight: 580; }
+  .fval { font-size: 13.5px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .ftxt { font-size: 13px; color: var(--text-secondary); }
+
+  .smalls { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px,1fr)); gap: 16px; }
+  .small .st { font-size: 12.5px; color: var(--text-secondary); font-weight: 550; margin-bottom: 4px; }
+
+  table.bench { border-collapse: separate; border-spacing: 2px; }
+  table.bench th { text-align: left; font-size: 12.5px; font-weight: 580; color: var(--text-primary);
+    padding: 8px 12px 8px 0; border: 0; vertical-align: middle; white-space: nowrap; }
+  table.bench th .bs { display: block; font-size: 11.5px; color: var(--text-muted); font-weight: 400; }
+  table.bench td { border: 0; padding: 0; }
+  table.bench td.cell { background: var(--field); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; text-align: center; min-width: 88px; }
+  table.bench td.cell.wide { min-width: 132px; }
+  table.bench td.cell.hit { border-color: var(--series-1); box-shadow: inset 0 0 0 1px var(--series-1); }
+  table.bench .bk { display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
+  table.bench .bv { display: block; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  table.bench td.note { font-size: 12.5px; color: var(--text-secondary); padding-left: 12px; text-align: left; }
+
   .sources { margin-top: 16px; font-size: 12px; color: var(--text-muted); }
   .sources li { margin-bottom: 3px; }
   .disclaim { margin-top: 10px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--grid); padding-top: 10px; }
@@ -304,6 +331,7 @@ const FIELDS = ["purchase_price","down_payment_pct","interest_rate_pct","loan_te
 
 let market = null;        // last /api/prefill payload
 let lastResult = null;    // last /api/analyze payload
+let fundamentals = null;  // last /api/fundamentals payload
 let projectionView = "chart";
 
 /* ---------- formatting ---------- */
@@ -313,6 +341,13 @@ const compact = (n) => {
   if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M";
   if (a >= 1e3) return s + "$" + Math.round(a / 1e3) + "K";
   return s + "$" + Math.round(a);
+};
+// Counts of people or listings are not money — keep the dollar sign off them.
+const countFmt = (n) => {
+  const a = Math.abs(n);
+  if (a >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (a >= 1e5) return Math.round(n / 1e3) + "K";
+  return Math.round(n).toLocaleString("en-US");
 };
 const pct = (n, dp = 1) => (n === null || n === undefined) ? "—" : n.toFixed(dp) + "%";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -382,12 +417,29 @@ async function loadMarket() {
     const m = market.market;
     setStatus(`${m.city || m.metro || zip}${m.state ? ", " + m.state : ""} — data as of ${m.home_value.as_of}`);
     await runAnalysis();
+    loadFundamentals(zip, m.state);   // fans out to a dozen series; never block the deal on it
   } catch (e) {
     setStatus(e.message, true);
     market = null;
   } finally {
     $("load").disabled = false;
   }
+}
+
+async function loadFundamentals(zip, state) {
+  fundamentals = null;
+  const host = $("fundamentals-card");
+  if (host) host.innerHTML = `<div class="card"><div class="empty">Loading market fundamentals…</div></div>`;
+  try {
+    const qs = new URLSearchParams({zip});
+    if (state) qs.set("state", state);
+    const r = await fetch("/api/fundamentals?" + qs);
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    fundamentals = await r.json();
+  } catch (e) {
+    fundamentals = {error: e.message};
+  }
+  renderFundamentals();
 }
 
 function renderHints() {
@@ -462,7 +514,9 @@ function lineChart(el, cfg) {
   add("line", {x1: P.l, x2: P.l + iw, y1: P.t + ih, y2: P.t + ih, stroke: cssVar("--axis"), "stroke-width": 1});
   if (min < 0 && max > 0) add("line", {x1: P.l, x2: P.l + iw, y1: y(0), y2: y(0), stroke: cssVar("--axis"), "stroke-width": 1});
 
-  const every = Math.max(1, Math.ceil(n / (W < 420 ? 5 : 9)));
+  // Fit tick labels to the plot width rather than a fixed count, or dates
+  // collide into an unreadable run on narrow small-multiple charts.
+  const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 72))));
   cfg.labels.forEach((lab, i) => {
     if (i % every === 0 || i === n - 1) {
       add("text", {x: x(i), y: H - 8, "text-anchor": "middle", fill: cssVar("--text-muted"), "font-size": 11}, lab);
@@ -651,10 +705,14 @@ function render() {
     <div class="scroll">${sensitivityTable(r)}</div>
   </div>`);
 
+  /* market fundamentals (loaded separately; placeholder keeps its slot) */
+  out.push(`<div id="fundamentals-card"></div>`);
+
   /* market context */
   if (market) out.push(marketCard());
 
   $("results").innerHTML = out.join("");
+  renderFundamentals();
 
   // charts + handlers need to run after innerHTML
   renderProjectionBody();
@@ -722,6 +780,120 @@ function sensitivityTable(r) {
     }).join("") + `</tr>`;
   }
   return html + `</tbody></table>`;
+}
+
+const GLYPH = {good: "▲", neutral: "—", bad: "▼"};
+const VCOLOR = {good: "--good", neutral: "--text-muted", bad: "--critical"};
+
+function renderFundamentals() {
+  const host = $("fundamentals-card");
+  if (!host || !fundamentals) return;
+  if (fundamentals.error) {
+    host.innerHTML = `<div class="card"><h2>Market fundamentals</h2>
+      <p class="sub">Unavailable: ${esc(fundamentals.error)}</p></div>`;
+    return;
+  }
+  const d = fundamentals, f = d.fundamentals, z = d.zip_listings, dem = d.demographics;
+  const sc = f.score, band = sc >= 70 ? "--good" : sc >= 55 ? "--series-1" : sc >= 40 ? "--warning" : "--critical";
+
+  const tiles = [];
+  if (dem) {
+    tiles.push(tile("County population", dem.population.toLocaleString(),
+      `${dem.growth_pct_per_year >= 0 ? "+" : ""}${dem.growth_pct_per_year}%/yr since ${dem.growth_since}`));
+    if (dem.net_domestic_migration_per_1k !== null)
+      tiles.push(tile("Net domestic migration", `${dem.net_domestic_migration_per_1k > 0 ? "+" : ""}${dem.net_domestic_migration_per_1k}`,
+        `per 1,000 residents · ${dem.net_domestic_migration.toLocaleString()} people, ${dem.as_of}`));
+  }
+  if (z) {
+    if (z.median_list_price) tiles.push(tile("Median list price (ZIP)", usd(z.median_list_price),
+      `Realtor.com, ${z.as_of}${z.price_per_sqft ? ` · ${usd(z.price_per_sqft)}/sq ft` : ""}`));
+    if (z.days_on_market !== null) tiles.push(tile("Days on market (ZIP)", `${z.days_on_market.toFixed(0)}`,
+      z.days_on_market_yoy_pct !== null ? `${z.days_on_market_yoy_pct > 0 ? "+" : ""}${z.days_on_market_yoy_pct.toFixed(0)}% vs last year` : "median"));
+    if (z.price_cut_share_pct !== null) tiles.push(tile("Listings with a price cut", pct(z.price_cut_share_pct, 0), `in this ZIP, ${z.as_of}`));
+  }
+  const perm = d.signals.metrics.building_permits;
+  if (perm) tiles.push(tile("New units permitted", Math.round(perm.latest).toLocaleString(),
+    `county, ${perm.as_of.slice(0, 4)}${perm.change_pct !== null ? ` · ${perm.change_pct > 0 ? "+" : ""}${perm.change_pct.toFixed(0)}% YoY` : ""}`));
+
+  host.innerHTML = `<div class="card">
+    <div class="card-head">
+      <div>
+        <h2>Market fundamentals — ${esc(d.county)}${d.state ? ", " + esc(d.state) : ""}</h2>
+        <p class="sub">Whether this market will still support the rent in year five. The deal math above assumes it does.</p>
+      </div>
+      <div class="pill" style="margin:0"><span class="dot" style="background:${cssVar(band)}"></span>${esc(f.label)} · ${sc}/100</div>
+    </div>
+    <ul class="findings">
+      ${f.findings.map((x) => `<li>
+        <span class="fg" style="color:${cssVar(VCOLOR[x.verdict])}" aria-hidden="true">${GLYPH[x.verdict]}</span>
+        <span class="fb"><span class="fsig">${esc(x.signal)}</span>
+        <span class="fval">${esc(x.value)}</span><span class="ftxt">${esc(x.text)}</span></span></li>`).join("")}
+    </ul>
+    <div class="tiles">${tiles.join("")}</div>
+    ${rentBenchmarkBlock()}
+    <div style="margin-top:20px">
+      <h2>County trends</h2>
+      <p class="sub">Employment and listing history for ${esc(d.county)}. ZIP-level readings above are current-month; these show direction.</p>
+      <div class="smalls" id="fund-charts"></div>
+    </div>
+    <ul class="sources">
+      <li>Jobs &amp; unemployment: BLS Local Area Unemployment Statistics via FRED${d.signals.metrics.employment ? `, ${d.signals.metrics.employment.as_of}` : ""}.</li>
+      <li>Listings: ${z ? esc(z.source) + `, ${z.as_of}` : "Realtor.com via FRED (county)"}.</li>
+      <li>Population &amp; migration: ${dem ? esc(dem.source) : "Census Population Estimates Program"}.</li>
+      ${d.uhaul ? `<li>Migration context: ${esc(d.uhaul.source)}, ${d.uhaul.year} — ${esc(d.state)} ranked #${d.uhaul.rank} of ${d.uhaul.of}${d.uhaul.rank_change ? ` (${d.uhaul.rank_change > 0 ? "up" : "down"} ${Math.abs(d.uhaul.rank_change)} from ${d.uhaul.year - 1})` : ""}. ${esc(d.uhaul.note)}</li>` : ""}
+      ${d.rent_benchmarks ? `<li>Rent benchmark: ${esc(d.rent_benchmarks.source)}.</li>` : ""}
+    </ul>
+  </div>`;
+
+  renderFundCharts();
+}
+
+function rentBenchmarkBlock() {
+  const b = fundamentals && fundamentals.rent_benchmarks;
+  const zori = market && market.market.rent ? market.market.rent.latest : null;
+  if (!b && !zori) return "";
+  const entered = parseFloat($("monthly_rent").value) || 0;
+  const beds = b ? Object.entries(b.by_bedroom) : [];
+  const rows = beds.map(([n, v]) => {
+    const label = n === "0" ? "Studio" : `${n} bed`;
+    const near = entered && Math.abs(entered - v) / v < 0.1;
+    return `<td class="cell${near ? " hit" : ""}"><span class="bk">${label}</span><span class="bv">${usd(v)}</span></td>`;
+  }).join("");
+  return `<div style="margin-top:20px">
+    <h2>Rent reality check</h2>
+    <p class="sub">Two independent readings of what this ZIP rents for. You entered <strong>${usd(entered)}</strong>/mo.</p>
+    <div class="scroll"><table class="bench"><tbody>
+      ${zori ? `<tr><th>Zillow ZORI<span class="bs">all unit types, ${market.market.rent.as_of}</span></th>
+        <td class="cell wide"><span class="bv">${usd(zori)}</span><span class="bk">typical asking rent</span></td>
+        <td class="note" colspan="4">${entered && zori ? `Your figure is ${Math.abs(entered / zori - 1) * 100 < 1 ? "in line with" : (entered > zori ? "above" : "below")} it${Math.abs(entered / zori - 1) * 100 >= 1 ? ` by ${(Math.abs(entered / zori - 1) * 100).toFixed(0)}%` : ""}.` : ""}</td></tr>` : ""}
+      ${b ? `<tr><th>HUD Small Area FMR<span class="bs">${esc(b.year)}, by bedroom count</span></th>${rows}</tr>` : ""}
+    </tbody></table></div>
+    ${b ? `<p class="hint" style="margin-top:8px">${esc(b.note)}</p>` : ""}
+  </div>`;
+}
+
+function renderFundCharts() {
+  const host = $("fund-charts");
+  if (!host || !fundamentals) return;
+  const m = fundamentals.signals.metrics;
+  const specs = [
+    {key: "employment", title: "Employed residents", color: "--series-1", fmt: countFmt},
+    {key: "days_on_market", title: "Median days on market", color: "--series-2", fmt: (v) => v.toFixed(0)},
+    {key: "active_listings", title: "Active listings", color: "--series-3", fmt: countFmt},
+  ].filter((s) => m[s.key]);
+  if (!specs.length) { host.innerHTML = ""; return; }
+  host.innerHTML = specs.map((s, i) =>
+    `<div class="small"><div class="st">${s.title}</div><div class="chart-wrap" id="fc${i}"></div></div>`).join("");
+  specs.forEach((s, i) => {
+    const d = m[s.key];
+    lineChart($(`fc${i}`), {
+      labels: d.history.dates.map((x) => x.slice(0, 7)),
+      series: [{name: s.title, color: s.color, values: d.history.values, area: true, endLabel: true}],
+      height: 150, padLeft: 46, padRight: 52,
+      fmtAxis: s.fmt, fmtTip: (v) => s.fmt(v),
+      ariaLabel: `${s.title} history for ${fundamentals.county}.`,
+    });
+  });
 }
 
 function marketCard() {
