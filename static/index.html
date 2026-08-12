@@ -29,6 +29,8 @@
     --div-pos: #1c5cab;
     --div-neg: #b52f2f;
     --shadow: 0 1px 2px rgba(11,11,11,0.04);
+    --note: #fdf8ec;
+    --note-edge: #e8dcbd;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
@@ -50,6 +52,10 @@
       --div-pos: #86b6ef;
       --div-neg: #e88585;
       --shadow: none;
+    --note: #221d12;
+    --note-edge: #443a22;
+      --note: #221d12;
+      --note-edge: #443a22;
     }
   }
   :root[data-theme="dark"] {
@@ -260,6 +266,14 @@
   table.bench .bv { display: block; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
   table.bench td.note { font-size: 12.5px; color: var(--text-secondary); padding-left: 12px; text-align: left; }
 
+
+  /* ---- callout: a material warning, not decoration ---- */
+  .callout { margin-top: 16px; border: 1px solid var(--note-edge, #e8dcbd); background: var(--note, #fdf8ec);
+    border-radius: 10px; padding: 12px 14px; }
+  .callout .ct { display: flex; gap: 8px; align-items: baseline; font-size: 13.5px; font-weight: 600; }
+  .callout .cg { color: var(--serious); font-size: 12px; }
+  .callout p { margin: 6px 0 0; font-size: 13px; color: var(--text-secondary); }
+  .callout p:first-of-type { margin-top: 8px; }
   .sources { margin-top: 16px; font-size: 12px; color: var(--text-muted); }
   .sources li { margin-bottom: 3px; }
   .disclaim { margin-top: 10px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--grid); padding-top: 10px; }
@@ -523,7 +537,14 @@ function renderHints() {
     }
     rentHint.textContent = txt;
   }
-  if (m.tax) taxHint.textContent = `${m.tax.state} average is ${m.tax.effective_rate_pct}% — county rates vary, verify locally.`;
+  const jur = market.tax_jurisdictions;
+  if (jur && jur.complete) {
+    taxHint.innerHTML = `<strong>${jur.effective_rate_pct}%</strong> = `
+      + jur.units.map((u) => `${esc(u.name)} ${u.rate_pct.toFixed(4)}`).join(" + ")
+      + `. ${jur.tax_year} adopted rates${jur.school_district ? `, ${esc(jur.school_district)} ISD` : ""}.`;
+  } else if (m.tax) {
+    taxHint.textContent = `${m.tax.state} average is ${m.tax.effective_rate_pct}% — county rates vary, verify locally.`;
+  }
   rateHint.textContent = market.provenance.mortgage_rate.startsWith("FRED")
     ? `30-yr fixed average, ${market.provenance.mortgage_rate.replace("FRED MORTGAGE30US, ", "")} (Freddie Mac via FRED).`
     : "";
@@ -901,12 +922,26 @@ function renderParcel() {
       ${s.parcel_id ? `<span class="tag-pill">Parcel ${esc(s.parcel_id)}</span>` : ""}
     </div>
     <div class="tiles">${tiles.join("")}</div>
+    ${homesteadCallout()}
     ${valueTriangulation(s, c)}
     ${compsBlock(c)}
     <ul class="sources">
       <li>Parcel record: ${esc(parcel.source || parcel.county)}${parcel.verified ? ` · adapter verified ${esc(parcel.verified)}` : ""}.</li>
       ${c.available ? `<li>Comparable sales: recorded deed transfers from the same source. Not MLS — public records cannot flag a distressed or non-arm's-length sale.</li>` : ""}
     </ul>
+  </div>`;
+}
+
+function homesteadCallout() {
+  const h = market && market.homestead;
+  if (!h) return "";
+  return `<div class="callout">
+    <div class="ct"><span class="cg" aria-hidden="true">▲</span>${esc(h.headline)}</div>
+    <p>The current owner holds ${h.exemptions.map((x) => esc(x.toLowerCase())).join(" and ")}.
+       ${esc(h.detail)}</p>
+    ${h.reappraisal_gap ? `<p><strong>Your purchase price is ${usd(h.reappraisal_gap)}
+       (${h.reappraisal_gap_pct}%) above the county's appraisal</strong>, and a recorded sale
+       typically pulls the appraisal up toward what you paid.</p>` : ""}
   </div>`;
 }
 

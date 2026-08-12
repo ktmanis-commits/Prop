@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from . import data_sources as ds
 from . import market_signals as ms
 from . import parcels as pc
+from . import tax_rates as tr
 from .analysis import DealInputs, analyze
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -211,19 +212,43 @@ def prefill(
     rent_growth = (mkt["rent"]["cagr_5y"] if mkt.get("rent") else None)
     rent_growth = 3.0 if rent_growth is None else max(0.0, min(5.0, rent_growth))
 
-    # The tax actually billed on this parcel beats a statewide average, which
-    # can be off by half: Cuyahoga bills 2.34% where Ohio averages 1.53%.
+    # Property tax, best source first:
+    #   1. the amount the county actually billed on this parcel
+    #   2. the sum of the jurisdictions that tax it (county + city + school + special)
+    #   3. the statewide average, which is a poor stand-in where school rates vary
     parcel_tax_rate = (parcel or {}).get("effective_tax_rate_pct") if parcel_value else None
-    tax_rate = parcel_tax_rate or mkt["tax"]["effective_rate_pct"]
-    tax_basis = (
-        f"{parcel['county']} billed {parcel['annual_tax']:,.0f} on this parcel in "
-        f"tax year {parcel.get('tax_year')} — {parcel_tax_rate}% of its market value"
-        if parcel_tax_rate else mkt["tax"]["note"])
+    jurisdictions = None
+    if geo and geo.get("county_fips") and not parcel_tax_rate:
+        try:
+            jurisdictions = tr.effective_rate(geo["county_fips"], geo.get("latitude"),
+                                              geo.get("longitude"),
+                                              (geo.get("components") or {}).get("city"))
+        except Exception:
+            jurisdictions = None
+
+    if parcel_tax_rate:
+        tax_rate = parcel_tax_rate
+        tax_basis = (f"{parcel['county']} billed {parcel['annual_tax']:,.0f} on this parcel in "
+                     f"tax year {parcel.get('tax_year')} — {parcel_tax_rate}% of its market value")
+    elif jurisdictions and jurisdictions["complete"]:
+        tax_rate = jurisdictions["effective_rate_pct"]
+        tax_basis = (f"{' + '.join(u['name'] for u in jurisdictions['units'])} "
+                     f"= {tax_rate}% ({jurisdictions['tax_year']} adopted rates, "
+                     f"{jurisdictions['source']})")
+    else:
+        tax_rate = mkt["tax"]["effective_rate_pct"]
+        tax_basis = mkt["tax"]["note"]
+
+    homestead = tr.homestead_warning(
+        (geo or {}).get("state"), (parcel or {}).get("exemptions"),
+        (parcel or {}).get("market_value"), use_price)
 
     return {
         "geocode": geo,
         "tract_hpi": tract,
         "parcel": parcel,
+        "tax_jurisdictions": jurisdictions,
+        "homestead": homestead,
         "market": mkt,
         "suggested_inputs": {
             "purchase_price": round(use_price),

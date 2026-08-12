@@ -160,6 +160,57 @@ Downloads are cached on disk. If a source is unreachable the app serves the
 stale cache rather than failing; if there is no cache at all, the API returns a
 clear error and the deal inputs still work by hand.
 
+## Property tax, done properly
+
+Property tax is the largest operating expense a landlord carries, and a
+statewide average is a poor way to estimate it. The app takes the best source
+available, in order:
+
+1. **The amount the county actually billed** on the parcel, where the assessor
+   publishes it. Cuyahoga does: 2.34% of market value on the example property,
+   against Ohio's 1.53% statewide average.
+2. **The sum of the jurisdictions that tax the parcel** — county, city, school
+   district and special districts — from each unit's adopted rate.
+3. **The statewide average**, with the app saying that is what it used.
+
+Lubbock County is configured at jurisdiction level from the [Texas Comptroller's
+2025 Statewide Report of Tax Rates](https://comptroller.texas.gov/taxes/property-tax/docs/2025-total-rates-levies.xlsx),
+with the school district resolved by a spatial lookup against the City of
+Lubbock's district boundaries. The spread that makes this worth doing:
+
+| School district | Total rate in the City of Lubbock | Tax on a $131,890 house |
+|---|---|---|
+| Lorenzo | 1.5844% | $2,090 |
+| **Lubbock** | **1.7694%** | **$2,334** |
+| Idalou | 1.9001% | $2,506 |
+| Abernathy | 2.0027% | $2,641 |
+| Frenship | 2.0589% | $2,715 |
+| Lubbock-Cooper | 2.0691% | $2,729 |
+| Roosevelt | 2.1154% | $2,790 |
+| New Deal | 2.1281% | $2,807 |
+| Shallowater / Slaton | 2.1574% | $2,845 |
+
+A 36% spread inside one county, against a Texas statewide average of 1.68% that
+understates most of it. Every rate is itemised in the UI with its comptroller
+unit ID, so an investor can audit the number rather than trust it.
+
+Public improvement districts are excluded — they apply only to parcels inside
+specific developments and membership cannot be read from the parcel record.
+Where one applies it is additive, and the app says so.
+
+### The Texas homestead trap
+
+Texas caps the taxable value of a homesteaded property at 10% growth a year and
+grants exemptions that reduce it further. **A buyer inherits none of it.** The
+exemptions come off, the cap resets, and the first bill is assessed on full
+market value. On a long-held property the seller's tax bill can be far below
+what a new owner will pay, which makes it a dangerous thing to underwrite from.
+
+**50,404 of the 83,041** single-family parcels in the Lubbock layer carry an
+exemption, so this is the common case, not the exception. Where the county
+publishes the flag the app shows a warning naming the exemptions held, and it
+always assesses tax on your purchase price rather than the seller's basis.
+
 ## County parcel adapters
 
 Assessor data is the one part of this app that cannot be national. Every county
@@ -275,10 +326,12 @@ app/analysis.py        pure investment math — payments, amortization, IRR, ver
 app/data_sources.py    public data fetchers with disk cache and graceful fallback
 app/market_signals.py  county/ZIP fundamentals: jobs, people, listings, supply
 app/parcels.py         county assessor adapters: subject property and sold comps
+app/tax_rates.py       jurisdiction-summed property tax rates and homestead rules
 docs/demo.html         self-contained demo with a frozen data snapshot
 app/main.py            FastAPI routes
 static/index.html      single-page UI, no build step and no external dependencies
 data/migration.json    dated U-Haul Growth Index snapshot (no API exists)
 data/county_parcels.json  per-county assessor adapters and field mappings
-tests/                 124 tests, offline by default
+data/tax_jurisdictions.json  adopted tax rates by taxing unit
+tests/                 151 tests, offline by default
 ```

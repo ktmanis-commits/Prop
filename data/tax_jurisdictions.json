@@ -1,0 +1,75 @@
+{
+  "_comment": [
+    "Adopted property tax rates per $100 of taxable value, by taxing unit.",
+    "A property's rate is the sum of every unit that taxes it: the county, its city (if",
+    "incorporated), its school district, and any county-wide special districts.",
+    "",
+    "This exists because a statewide average is a poor stand-in where rates vary by school",
+    "district. In Lubbock County the spread is real: a Lubbock ISD property inside the city",
+    "totals 1.769%, the same house in Frenship ISD totals 2.059% — a 16% difference in the",
+    "single largest operating expense a landlord carries.",
+    "",
+    "Public improvement districts are deliberately excluded: they apply only to parcels inside",
+    "specific developments, and membership cannot be determined from the parcel record. Where",
+    "one applies it is additive, so a PID property will be taxed slightly more than shown."
+  ],
+  "counties": {
+    "48303": {
+      "county": "Lubbock County",
+      "state": "TX",
+      "tax_year": 2025,
+      "source": "Texas Comptroller of Public Accounts, 2025 Statewide Report of Tax Rates",
+      "source_url": "https://comptroller.texas.gov/taxes/property-tax/docs/2025-total-rates-levies.xlsx",
+      "verified": "2026-08-12",
+      "countywide": [
+        {"name": "Lubbock County", "unit_id": "152-000-00", "rate": 0.327425},
+        {"name": "Lubbock County Hospital District", "unit_id": "152-201-11", "rate": 0.09966},
+        {"name": "High Plains Underground Water Conservation District #1", "unit_id": "191-201-06", "rate": 0.00295}
+      ],
+      "cities": {
+        "LUBBOCK": {"name": "City of Lubbock", "unit_id": "152-104-03", "rate": 0.472191},
+        "WOLFFORTH": {"name": "City of Wolfforth", "unit_id": "152-103-03", "rate": 0.847604},
+        "SLATON": {"name": "City of Slaton", "unit_id": "152-105-03", "rate": 0.685656},
+        "SHALLOWATER": {"name": "City of Shallowater", "unit_id": "152-102-03", "rate": 0.571046},
+        "IDALOU": {"name": "City of Idalou", "unit_id": "152-101-03", "rate": 0.50003},
+        "NEW DEAL": {"name": "City of New Deal", "unit_id": "152-107-03", "rate": 0.580967},
+        "RANSOM CANYON": {"name": "Town of Ransom Canyon", "unit_id": "152-106-03", "rate": 0.713113}
+      },
+      "school_district_layer": {
+        "url": "https://pubgis.ci.lubbock.tx.us/server/rest/services/ParcelViewerSearch/MapServer/3",
+        "field": "SCHOOL"
+      },
+      "school_districts": {
+        "LUBBOCK": {"name": "Lubbock ISD", "unit_id": "152-901-02", "rate": 0.8672},
+        "FRENSHIP": {"name": "Frenship ISD", "unit_id": "152-907-02", "rate": 1.1567},
+        "LUB-COOPER": {"name": "Lubbock-Cooper ISD", "unit_id": "152-906-02", "rate": 1.1669},
+        "ROOSEVELT": {"name": "Roosevelt ISD", "unit_id": "152-908-02", "rate": 1.2132},
+        "IDALOU": {"name": "Idalou ISD", "unit_id": "152-910-02", "rate": 0.9979},
+        "SHALLOWATER": {"name": "Shallowater ISD", "unit_id": "152-909-02", "rate": 1.2552},
+        "SLATON": {"name": "Slaton ISD", "unit_id": "152-903-02", "rate": 1.2552},
+        "NEW DEAL": {"name": "New Deal ISD", "unit_id": "152-902-02", "rate": 1.22589},
+        "ABERNATHY": {"name": "Abernathy ISD", "unit_id": "095-901-02", "rate": 1.1005},
+        "LORENZO": {"name": "Lorenzo ISD", "unit_id": "054-902-02", "rate": 0.6822}
+      },
+      "excluded": [
+        "Public improvement districts (Bell Farms, North Overton, North Point, Quincy Park, Upland Crossing 1-3, Valencia, Willow Bend Villas, Northwest Passage, Cypress Ranch) — parcel-specific, 0.12% to 0.18% where they apply.",
+        "South Plains College District — its taxing boundary does not cover the City of Lubbock."
+      ]
+    }
+  },
+  "homestead": {
+    "TX": {
+      "cap_pct": 10,
+      "headline": "The seller's tax bill is not the tax bill you will get.",
+      "detail": "Texas caps the taxable value of a homesteaded property at 10% growth a year, and grants exemptions that reduce it further. The appraised market value shown here is not capped — the taxable value the current owner is billed on sits below it, often far below on a long-held property. A buyer inherits none of that: the exemptions come off, the cap resets, and the first bill is assessed on full market value. Do not underwrite from the seller's tax bill or from a tax estimate built on their taxable value. This app assesses tax on your purchase price, which is the right basis for a new owner.",
+      "codes": {
+        "HS": "General residence homestead",
+        "OA": "Over-65",
+        "DV": "Disabled veteran",
+        "DP": "Disabled person",
+        "OV65": "Over-65",
+        "AG": "Agricultural use valuation"
+      }
+    }
+  }
+}
