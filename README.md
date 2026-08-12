@@ -125,6 +125,8 @@ All public. **No API keys required for anything.**
 | ZIP → county mapping | Census ZCTA relationship file | Direct TXT | Decennial |
 | Migration direction by state | U-Haul Growth Index | Bundled snapshot | Annual |
 | Property tax rates by state | Census ACS-derived | Bundled table | Static |
+| Adopted tax rates by taxing unit | Texas Comptroller | Bundled table | Annual |
+| Insurance premiums & claims by ZIP | Treasury FIO / NAIC | Bundled table | 2018-2022 |
 
 `GET /api/sources` returns this same inventory at runtime with each cadence, so
 the freshness of an analysis is auditable rather than implied.
@@ -210,6 +212,34 @@ what a new owner will pay, which makes it a dangerous thing to underwrite from.
 exemption, so this is the common case, not the exception. Where the county
 publishes the flag the app shows a warning naming the exemptions held, and it
 always assesses tax on your purchase price rather than the seller's basis.
+
+### Insurance, priced by ZIP
+
+A flat national insurance default is wrong almost everywhere, and wrong in both
+directions. The app uses the ZIP's own figure from the [Treasury/NAIC homeowners
+data call](https://home.treasury.gov/news/press-releases/jy2791) — ZIP-level
+premiums, claim frequency, severity, loss ratios and non-renewal rates collected
+from insurers covering an annual average of 49.3 million policies.
+
+| ZIP | Premium | vs national median |
+|---|---|---|
+| Lubbock 79412 | $2,412 | 1.56x |
+| Lubbock 79423 | $2,406 | 1.55x |
+| Cleveland 44105 | $1,359 | 0.88x |
+| Lakewood 44107 | $1,265 | 0.82x |
+
+The old $1,500 default understated Lubbock by 61% and overstated Lakewood. West
+Texas ZIPs run a median of $2,421 against $1,551 nationally.
+
+The claims history matters as much as the premium. Lubbock 79423 saw **47% of
+policies file a claim** in its worst year, with insurers paying out 3.3x premium
+— that is hail, and it is what precedes rate rises and tightened underwriting.
+The app surfaces those years rather than burying them in an average.
+
+Two caveats the app states on the page: the data runs to **2022**, the most
+recent year published, and the hard market since has moved premiums — treat it
+as a floor and get a quote. And it is the average *owner-occupied* premium; a
+landlord policy on the same house is written differently and usually costs more.
 
 ## County parcel adapters
 
@@ -327,11 +357,13 @@ app/data_sources.py    public data fetchers with disk cache and graceful fallbac
 app/market_signals.py  county/ZIP fundamentals: jobs, people, listings, supply
 app/parcels.py         county assessor adapters: subject property and sold comps
 app/tax_rates.py       jurisdiction-summed property tax rates and homestead rules
+app/insurance.py       ZIP-level premiums and claims risk
 docs/demo.html         self-contained demo with a frozen data snapshot
 app/main.py            FastAPI routes
 static/index.html      single-page UI, no build step and no external dependencies
 data/migration.json    dated U-Haul Growth Index snapshot (no API exists)
 data/county_parcels.json  per-county assessor adapters and field mappings
 data/tax_jurisdictions.json  adopted tax rates by taxing unit
-tests/                 151 tests, offline by default
+data/insurance_by_zip.csv   premiums and claims history for ~25,600 ZIPs
+tests/                 163 tests, offline by default
 ```

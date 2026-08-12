@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import data_sources as ds
+from . import insurance as ins
 from . import market_signals as ms
 from . import parcels as pc
 from . import tax_rates as tr
@@ -239,6 +240,8 @@ def prefill(
         tax_rate = mkt["tax"]["effective_rate_pct"]
         tax_basis = mkt["tax"]["note"]
 
+    insurance = ins.for_zip(resolved_zip)
+
     homestead = tr.homestead_warning(
         (geo or {}).get("state"), (parcel or {}).get("exemptions"),
         (parcel or {}).get("market_value"), use_price)
@@ -248,6 +251,7 @@ def prefill(
         "tract_hpi": tract,
         "parcel": parcel,
         "tax_jurisdictions": jurisdictions,
+        "insurance": insurance,
         "homestead": homestead,
         "market": mkt,
         "suggested_inputs": {
@@ -255,6 +259,7 @@ def prefill(
             "monthly_rent": rent_estimate,
             "interest_rate_pct": rate,
             "property_tax_rate_pct": tax_rate,
+            "annual_insurance": (insurance or {}).get("annual_premium") or 1500,
             "annual_appreciation_pct": appreciation,
             "annual_rent_growth_pct": round(rent_growth, 2),
         },
@@ -264,6 +269,8 @@ def prefill(
                      if mkt.get("rent") else "unavailable"),
             "mortgage_rate": f"FRED MORTGAGE30US, {rate_as_of}" if rate_as_of else "default (FRED unavailable)",
             "property_tax": tax_basis,
+            "insurance": (f"{insurance['source']}, {insurance['data_year']} average for ZIP "
+                          f"{insurance['zip']}" if insurance else "generic default"),
             "appreciation": appreciation_basis,
             "purchase_price": (
                 "your asking price" if price and price > 0 else

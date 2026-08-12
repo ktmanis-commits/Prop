@@ -333,6 +333,7 @@
           <div class="row"><label for="property_tax_rate_pct">Property tax %/yr</label><input id="property_tax_rate_pct" type="number" step="0.05" value="1.1"></div>
           <div class="hint" id="tax-hint"></div>
           <div class="row"><label for="annual_insurance">Insurance /yr</label><input id="annual_insurance" type="number" step="50" value="1500"></div>
+          <div class="hint" id="ins-hint"></div>
           <div class="row"><label for="maintenance_pct">Maintenance % rent</label><input id="maintenance_pct" type="number" step="0.5" value="5"></div>
           <div class="row"><label for="capex_pct">CapEx reserve % rent</label><input id="capex_pct" type="number" step="0.5" value="5"></div>
           <div class="row"><label for="management_pct">Management % rent</label><input id="management_pct" type="number" step="0.5" value="8"></div>
@@ -521,8 +522,8 @@ async function loadFundamentals(loc, state) {
 }
 
 function renderHints() {
-  const rentHint = $("rent-hint"), taxHint = $("tax-hint"), rateHint = $("rate-hint"), apprHint = $("appr-hint");
-  [rentHint, taxHint, rateHint, apprHint].forEach((el) => { el.textContent = ""; el.classList.remove("flag"); });
+  const rentHint = $("rent-hint"), taxHint = $("tax-hint"), rateHint = $("rate-hint"), apprHint = $("appr-hint"), insHint = $("ins-hint");
+  [rentHint, taxHint, rateHint, apprHint, insHint].forEach((el) => { el.textContent = ""; el.classList.remove("flag"); });
   if (!market) return;
   const m = market.market;
 
@@ -537,6 +538,13 @@ function renderHints() {
     }
     rentHint.textContent = txt;
   }
+  const insr = market.insurance;
+  if (insHint && insr) {
+    insHint.textContent = `ZIP average ${usd(insr.annual_premium)} in ${insr.data_year}`
+      + ` (${insr.vs_national}x the national median). ${insr.vintage_note}`;
+    insHint.classList.toggle("flag", insr.vs_national >= 1.4);
+  }
+
   const jur = market.tax_jurisdictions;
   if (jur && jur.complete) {
     taxHint.innerHTML = `<strong>${jur.effective_rate_pct}%</strong> = `
@@ -923,12 +931,23 @@ function renderParcel() {
     </div>
     <div class="tiles">${tiles.join("")}</div>
     ${homesteadCallout()}
+    ${insuranceCallout()}
     ${valueTriangulation(s, c)}
     ${compsBlock(c)}
     <ul class="sources">
       <li>Parcel record: ${esc(parcel.source || parcel.county)}${parcel.verified ? ` · adapter verified ${esc(parcel.verified)}` : ""}.</li>
       ${c.available ? `<li>Comparable sales: recorded deed transfers from the same source. Not MLS — public records cannot flag a distressed or non-arm's-length sale.</li>` : ""}
     </ul>
+  </div>`;
+}
+
+function insuranceCallout() {
+  const i = market && market.insurance;
+  if (!i || !i.findings.length) return "";
+  return `<div class="callout">
+    <div class="ct"><span class="cg" aria-hidden="true">\u25B2</span>Insurance costs more here than a generic estimate assumes.</div>
+    ${i.findings.map((f) => `<p>${esc(f)}</p>`).join("")}
+    <p style="opacity:.85">${esc(i.policy_note)} Source: ${esc(i.source)}.</p>
   </div>`;
 }
 
