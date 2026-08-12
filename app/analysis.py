@@ -19,6 +19,8 @@ class DealInputs:
     loan_term_years: int = 30
     closing_costs_pct: float = 3.0          # percent of purchase price
     rehab_cost: float = 0.0
+    rehab_financed_pct: float = 0.0         # portion of rehab rolled into the loan
+    interest_only_years: int = 0            # 0 -> fully amortizing from day one
     after_repair_value: float = 0.0         # 0 -> assume purchase price + rehab
 
     # Income (monthly)
@@ -58,8 +60,8 @@ def monthly_payment(principal: float, annual_rate_pct: float, years: int) -> flo
 
 def loan_balance(principal: float, annual_rate_pct: float, years: int, months_elapsed: int) -> float:
     """Remaining balance after `months_elapsed` payments."""
-    if principal <= 0:
-        return 0.0
+    if principal <= 0 or years <= 0:
+        return 0.0 if years <= 0 else principal
     n = years * 12
     m = min(months_elapsed, n)
     r = annual_rate_pct / 100.0 / 12.0
@@ -67,6 +69,37 @@ def loan_balance(principal: float, annual_rate_pct: float, years: int, months_el
         return principal * (1 - m / n)
     pmt = monthly_payment(principal, annual_rate_pct, years)
     return principal * (1 + r) ** m - pmt * (((1 + r) ** m - 1) / r)
+
+
+def interest_only_payment(principal: float, annual_rate_pct: float) -> float:
+    """Monthly interest on the full balance — no principal repaid."""
+    return principal * annual_rate_pct / 100.0 / 12.0
+
+
+def loan_payments(principal: float, annual_rate_pct: float, years: int,
+                  io_years: int = 0) -> tuple[float, float]:
+    """(payment during the interest-only period, payment once amortizing).
+
+    An interest-only period lowers the payment while it lasts and buys nothing
+    in equity: the balance is unchanged when it ends, and the loan must then
+    amortize over the years that remain, so the later payment is higher than a
+    fully-amortizing loan of the same term would have been.
+    """
+    io_years = max(0, min(io_years, years))
+    io = interest_only_payment(principal, annual_rate_pct) if io_years else 0.0
+    amort_years = years - io_years
+    amort = monthly_payment(principal, annual_rate_pct, amort_years) if amort_years > 0 else 0.0
+    return io, amort
+
+
+def balance_after(principal: float, annual_rate_pct: float, years: int,
+                  io_years: int, months_elapsed: int) -> float:
+    """Balance accounting for an interest-only period at the start."""
+    io_months = max(0, min(io_years, years)) * 12
+    if months_elapsed <= io_months:
+        return principal
+    return loan_balance(principal, annual_rate_pct, years - io_months // 12,
+                        months_elapsed - io_months)
 
 
 def irr(cash_flows: list[float], lo: float = -0.99, hi: float = 10.0) -> float | None:
@@ -108,13 +141,24 @@ def analyze(inp: DealInputs) -> dict:
     verdict with plain-language reasons."""
     price = inp.purchase_price
     down_payment = price * inp.down_payment_pct / 100.0
-    loan_amount = price - down_payment
     closing_costs = price * inp.closing_costs_pct / 100.0
-    cash_invested = down_payment + closing_costs + inp.rehab_cost
+
+    # Rehab is either capital you put in or debt you take on. Financing it
+    # lowers the cash you need and raises the payment; it does not make the
+    # rehab cheaper, and the deal has to carry the extra debt either way.
+    financed_share = max(0.0, min(100.0, inp.rehab_financed_pct)) / 100.0
+    rehab_financed = inp.rehab_cost * financed_share
+    rehab_cash = inp.rehab_cost - rehab_financed
+
+    loan_amount = price - down_payment + rehab_financed
+    cash_invested = down_payment + closing_costs + rehab_cash
     basis = price + inp.rehab_cost
     start_value = inp.after_repair_value if inp.after_repair_value > 0 else basis
 
-    pi_payment = monthly_payment(loan_amount, inp.interest_rate_pct, inp.loan_term_years)
+    io_years = max(0, min(inp.interest_only_years, inp.loan_term_years))
+    io_payment, amort_payment = loan_payments(loan_amount, inp.interest_rate_pct,
+                                              inp.loan_term_years, io_years)
+    pi_payment = io_payment if io_years else amort_payment
     annual_debt_service = pi_payment * 12
 
     # --- Year-1 operating statement ---
@@ -166,10 +210,14 @@ def analyze(inp: DealInputs) -> dict:
                   + rent_y * (inp.maintenance_pct + inp.capex_pct) / 100.0
                   + (rent_y - vac_y) * inp.management_pct / 100.0)
         noi_y = egi_y - opex_y
-        debt_y = annual_debt_service if year * 12 <= inp.loan_term_years * 12 else 0.0
+        if year * 12 > inp.loan_term_years * 12:
+            debt_y = 0.0
+        else:
+            debt_y = (io_payment if year <= io_years else amort_payment) * 12
         cf_y = noi_y - debt_y
         cumulative_cf += cf_y
-        balance = loan_balance(loan_amount, inp.interest_rate_pct, inp.loan_term_years, year * 12)
+        balance = balance_after(loan_amount, inp.interest_rate_pct, inp.loan_term_years,
+                                io_years, year * 12)
         equity = value - balance
         years.append({
             "year": year,
@@ -197,7 +245,9 @@ def analyze(inp: DealInputs) -> dict:
     sensitivity = []
     for rate_shift in (-1.0, -0.5, 0.0, 0.5, 1.0):
         row = {"rate": round(inp.interest_rate_pct + rate_shift, 2), "cells": []}
-        pmt = monthly_payment(loan_amount, inp.interest_rate_pct + rate_shift, inp.loan_term_years)
+        shifted_io, shifted_amort = loan_payments(loan_amount, inp.interest_rate_pct + rate_shift,
+                                                  inp.loan_term_years, io_years)
+        pmt = shifted_io if io_years else shifted_amort
         for rent_shift in (-10, -5, 0, 5, 10):
             rent = inp.monthly_rent * (1 + rent_shift / 100.0)
             g = rent * 12
@@ -256,6 +306,16 @@ def analyze(inp: DealInputs) -> dict:
             reasons.append(f"Cap rate is {abs(spread):.1f} pts below the borrowing rate (negative leverage).")
     if one_pct is not None:
         reasons.append(f"Rent-to-price is {one_pct:.2f}% vs the classic 1% rule of thumb.")
+    if io_years:
+        step = amort_payment - io_payment
+        reasons.append(
+            f"Interest-only for {io_years} year{'s' if io_years != 1 else ''}: the payment rises "
+            f"${step:,.0f}/mo in year {io_years + 1}, and you owe the same "
+            f"${loan_amount:,.0f} then as today.")
+    if rehab_financed > 0:
+        reasons.append(
+            f"${rehab_financed:,.0f} of rehab is financed rather than paid in cash — it lowers "
+            "cash in but the deal carries the debt.")
 
     return {
         "acquisition": {
@@ -264,8 +324,15 @@ def analyze(inp: DealInputs) -> dict:
             "loan_amount": round(loan_amount, 2),
             "closing_costs": round(closing_costs, 2),
             "rehab_cost": round(inp.rehab_cost, 2),
+            "rehab_financed": round(rehab_financed, 2),
+            "rehab_cash": round(rehab_cash, 2),
             "total_cash_invested": round(cash_invested, 2),
             "monthly_pi_payment": round(pi_payment, 2),
+            "interest_only_years": io_years,
+            "interest_only_payment": round(io_payment, 2) if io_years else None,
+            "amortizing_payment": round(amort_payment, 2),
+            "payment_step_up": (round(amort_payment - io_payment, 2) if io_years else None),
+            "price_per_sqft": None,   # filled by the caller when size is known
         },
         "year_one": {
             "gross_rent": round(gross_rent, 2),

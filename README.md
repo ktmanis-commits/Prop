@@ -58,6 +58,12 @@ assembles **comparable sales** from recorded deed transfers nearby, sized within
 assessor's, the comps', and the ZIP median. They will not agree, and the spread
 is the point.
 
+**Models how the deal is capitalised.** Rehab is either capital you put in or
+debt you take on, so the rehab budget carries a financed percentage: financing
+it lowers cash in, raises the payment and cuts DSCR, and the app shows all
+three moving. An interest-only period is available too, and reports what it
+costs — the payment step-up when it ends, and the equity you did not build.
+
 **Runs a real pro forma.** A year-one operating statement from gross scheduled
 rent down to cash flow, with vacancy, maintenance, CapEx reserves, management,
 taxes, insurance and debt service each broken out. Reserves are included by
@@ -365,5 +371,5 @@ data/migration.json    dated U-Haul Growth Index snapshot (no API exists)
 data/county_parcels.json  per-county assessor adapters and field mappings
 data/tax_jurisdictions.json  adopted tax rates by taxing unit
 data/insurance_by_zip.csv   premiums and claims history for ~25,600 ZIPs
-tests/                 163 tests, offline by default
+tests/                 183 tests, offline by default
 ```

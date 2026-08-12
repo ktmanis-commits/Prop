@@ -316,8 +316,12 @@
           <div class="row"><label for="interest_rate_pct">Interest rate %</label><input id="interest_rate_pct" type="number" step="0.05" value="6.5"></div>
           <div class="hint" id="rate-hint"></div>
           <div class="row"><label for="loan_term_years">Loan term (yrs)</label><input id="loan_term_years" type="number" step="1" value="30"></div>
+          <div class="row"><label for="interest_only_years">Interest-only (yrs)</label><input id="interest_only_years" type="number" step="1" min="0" value="0"></div>
+          <div class="hint" id="io-hint"></div>
           <div class="row"><label for="closing_costs_pct">Closing costs %</label><input id="closing_costs_pct" type="number" step="0.25" value="3"></div>
           <div class="row"><label for="rehab_cost">Rehab budget</label><input id="rehab_cost" type="number" step="1000" value="0"></div>
+          <div class="row"><label for="rehab_financed_pct">…% financed</label><input id="rehab_financed_pct" type="number" step="5" min="0" max="100" value="0"></div>
+          <div class="hint" id="rehab-hint"></div>
           <div class="row"><label for="after_repair_value">After-repair value</label><input id="after_repair_value" type="number" step="1000" value="0"></div>
           <div class="hint">Leave after-repair value at 0 to use price + rehab.</div>
         </fieldset>
@@ -364,7 +368,7 @@
 
 const $ = (id) => document.getElementById(id);
 const FIELDS = ["purchase_price","down_payment_pct","interest_rate_pct","loan_term_years","closing_costs_pct",
-  "rehab_cost","after_repair_value","monthly_rent","other_monthly_income","vacancy_pct","property_tax_rate_pct",
+  "rehab_cost","rehab_financed_pct","interest_only_years","after_repair_value","monthly_rent","other_monthly_income","vacancy_pct","property_tax_rate_pct",
   "annual_insurance","maintenance_pct","capex_pct","management_pct","monthly_hoa","monthly_utilities",
   "other_monthly_expenses","annual_appreciation_pct","annual_rent_growth_pct","annual_expense_growth_pct",
   "holding_period_years","selling_costs_pct"];
@@ -543,6 +547,27 @@ function renderHints() {
     insHint.textContent = `ZIP average ${usd(insr.annual_premium)} in ${insr.data_year}`
       + ` (${insr.vs_national}x the national median). ${insr.vintage_note}`;
     insHint.classList.toggle("flag", insr.vs_national >= 1.4);
+  }
+
+  const acq = lastResult && lastResult.acquisition;
+  const ioHint = $("io-hint"), rehabHint = $("rehab-hint");
+  if (ioHint && acq) {
+    if (acq.interest_only_years) {
+      ioHint.textContent = `${usd(acq.interest_only_payment)}/mo for ${acq.interest_only_years} yr`
+        + `, then ${usd(acq.amortizing_payment)} (+${usd(acq.payment_step_up)}). You still owe `
+        + `${usd(acq.loan_amount)} when it ends — no principal is repaid.`;
+      ioHint.classList.add("flag");
+    } else {
+      ioHint.textContent = "";
+      ioHint.classList.remove("flag");
+    }
+  }
+  if (rehabHint && acq) {
+    rehabHint.textContent = acq.rehab_cost
+      ? (acq.rehab_financed
+          ? `${usd(acq.rehab_financed)} rolled into the loan, ${usd(acq.rehab_cash)} out of pocket.`
+          : `${usd(acq.rehab_cash)} out of pocket — set a percentage to finance it instead.`)
+      : "";
   }
 
   const jur = market.tax_jurisdictions;
@@ -772,7 +797,11 @@ function render() {
     <div class="tiles">
       ${tile("Cash to close", usd(r.acquisition.total_cash_invested), `${usd(r.acquisition.down_payment)} down + ${usd(r.acquisition.closing_costs)} costs${r.acquisition.rehab_cost ? " + rehab" : ""}`)}
       ${tile("Loan amount", usd(r.acquisition.loan_amount), `${usd(r.acquisition.monthly_pi_payment)}/mo P&amp;I`)}
-      ${tile("Operating expense ratio", pct(r.metrics.operating_expense_ratio_pct), "of effective gross income")}
+      ${(market && market.parcel && market.parcel.living_area)
+        ? tile("Your price per sq ft", usd(readInputs().purchase_price / market.parcel.living_area, 2),
+               `over ${countFmt(market.parcel.living_area)} sq ft${market.parcel.price_per_sqft
+                 ? ` · assessor ${usd(market.parcel.price_per_sqft)}` : ""}`)
+        : tile("Operating expense ratio", pct(r.metrics.operating_expense_ratio_pct), "of effective gross income")}
       ${tile("Gross rent multiplier", r.metrics.gross_rent_multiplier === null ? "—" : r.metrics.gross_rent_multiplier.toFixed(1) + "×", "price ÷ annual rent")}
     </div>
   </div>`);
@@ -914,7 +943,9 @@ function renderParcel() {
   if (s.market_value) tiles.push(tile("Assessor market value", usd(s.market_value),
     `${esc(parcel.county)}${s.tax_year ? `, tax year ${s.tax_year}` : ""}`));
   if (s.living_area) tiles.push(tile("Living area", `${countFmt(s.living_area)} sq ft`,
-    s.value_per_sqft ? `${usd(s.value_per_sqft)}/sq ft assessed` : "per county record"));
+    [s.price_per_sqft || s.value_per_sqft ? `${usd(s.price_per_sqft || s.value_per_sqft)}/sq ft` : null,
+     s.year_built ? `built ${s.year_built}` : null,
+     s.stories ? `${s.stories} storey` : null].filter(Boolean).join(" · ") || "per county record"));
   if (s.lot_acres) tiles.push(tile("Lot", `${s.lot_acres} ac`,
     `${countFmt(s.lot_acres * 43560)} sq ft${s.zoning ? ` · zoned ${esc(s.zoning)}` : ""}`));
   if (s.rooms) tiles.push(tile("Rooms", String(s.rooms), s.land_use ? esc(String(s.land_use).toLowerCase()) : "total rooms"));

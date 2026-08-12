@@ -33,6 +33,8 @@ class DealRequest(BaseModel):
     loan_term_years: int = 30
     closing_costs_pct: float = 3.0
     rehab_cost: float = 0.0
+    rehab_financed_pct: float = Field(default=0.0, ge=0, le=100)
+    interest_only_years: int = Field(default=0, ge=0, le=40)
     after_repair_value: float = 0.0
     monthly_rent: float = 0.0
     other_monthly_income: float = 0.0

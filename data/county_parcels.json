@@ -91,7 +91,20 @@
         "subdivision": "SUBDIVISION",
         "exemptions": "EXEMPTIONS",
         "use_code": "GUC"
-      }
+      },
+      "joins": [
+        {
+          "url": "https://pubgis.ci.lubbock.tx.us/server/rest/services/ParcelViewerSearch/MapServer/1",
+          "join_field": "PIN",
+          "note": "Building footprints: floor area and build date, which the parcel layer omits.",
+          "fields": {
+            "living_area": "TOTAL_FLOOR_AREA",
+            "year_built": "DATE_BUILT",
+            "stories": "TOTAL_NUMB_FLOORS",
+            "residences": "NUMBER_RESIDENCES"
+          }
+        }
+      ]
     }
   },
   "non_disclosure_states": {

@@ -277,7 +277,64 @@ def _resolve_via_address_layer(cfg: dict, components: dict | None) -> dict | Non
     # may carry only a legal description.
     best["address"] = hits[0].get(al["address_field"]) or best.get("address")
     best["match"] = "address"
+    _apply_joins(cfg, best, key)
     return best
+
+
+def _apply_joins(cfg: dict, subject: dict, key) -> None:
+    """Fold in extra layers keyed to the same parcel.
+
+    Counties split the record across services — Lubbock keeps valuation on the
+    parcel layer and building size and age on a footprints layer. Each join
+    contributes fields the parcel layer does not carry, and a join that fails
+    leaves the subject as it was.
+    """
+    for join in cfg.get("joins", []):
+        quoted = f"'{key}'" if isinstance(key, str) else str(key)
+        try:
+            rows = _query(join["url"], {
+                "where": f"{join['join_field']}={quoted}",
+                "outFields": ",".join(sorted(set(join["fields"].values()))),
+                "resultRecordCount": "20",
+            })
+        except DataUnavailable:
+            continue
+        if not rows:
+            continue
+        # A parcel can carry several structures; take the largest by floor area.
+        area_col = join["fields"].get("living_area")
+        if area_col:
+            rows = sorted(rows, key=lambda r: float(r.get(area_col) or 0), reverse=True)
+        row = rows[0]
+        for name, col in join["fields"].items():
+            value = row.get(col)
+            if value in (None, "", 0):
+                continue
+            if name == "year_built":
+                subject[name] = _as_year(value)
+            elif name in ("living_area", "stories", "residences"):
+                subject[name] = float(value)
+            else:
+                subject[name] = value
+        if len(rows) > 1:
+            subject["structures"] = len(rows)
+
+    living = subject.get("living_area")
+    market = subject.get("market_value")
+    if living and market:
+        subject["price_per_sqft"] = round(market / living, 2)
+
+
+def _as_year(value) -> int | None:
+    """Counties store build year as a year, or as an epoch-ms date."""
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return None
+    if 1500 < n < 3000:
+        return int(n)
+    iso = _epoch_ms_to_date(n)
+    return int(iso[:4]) if iso else None
 
 
 def subject_property(county_fips: str, lat: float, lon: float,
