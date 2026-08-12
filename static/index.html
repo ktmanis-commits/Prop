@@ -105,7 +105,15 @@
   input:focus-visible, select:focus-visible, button:focus-visible {
     outline: 2px solid var(--series-1); outline-offset: 1px;
   }
-  .lookup input { width: 130px; }
+  .lookup input { width: 150px; }
+  .lookup .f.grow { flex: 1 1 330px; min-width: 240px; }
+  .lookup .f.grow input { width: 100%; }
+  .lookup label .opt { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: .75; }
+  .matched { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px;
+    color: var(--text-secondary); padding: 0 24px 12px; background: var(--surface-1);
+    border-bottom: 1px solid var(--border); margin: 0; }
+  .matched strong { color: var(--text-primary); font-weight: 580; }
+  .matched .tag { font-size: 11.5px; color: var(--text-muted); }
   button {
     font: inherit; font-weight: 550; cursor: pointer;
     background: var(--series-1); color: #fff; border: 1px solid transparent;
@@ -247,22 +255,23 @@
 
 <header>
   <h1>Property Investment Analyzer</h1>
-  <p>Underwrite a residential rental in seconds. Enter a ZIP code to pull live home values, market rents and today's mortgage rate from public data, then adjust any assumption to see how the deal holds up.</p>
+  <p>Underwrite a residential rental in seconds. Enter the property's address to pull live home values, market rents, neighborhood price trends and today's mortgage rate from public data, then adjust any assumption to see how the deal holds up.</p>
 </header>
 
 <div class="lookup">
-  <div class="f">
-    <label for="zip">ZIP code</label>
-    <input id="zip" inputmode="numeric" maxlength="5" placeholder="78704" value="">
+  <div class="f grow">
+    <label for="locator">Property address <span class="opt">or ZIP code</span></label>
+    <input id="locator" placeholder="1401 Marlowe Ave, Lakewood, OH" autocomplete="street-address">
   </div>
   <div class="f">
-    <label for="askprice">Asking price (optional)</label>
+    <label for="askprice">Asking price <span class="opt">optional</span></label>
     <input id="askprice" inputmode="numeric" placeholder="market median">
   </div>
   <button id="load">Pull market data</button>
   <button id="demo" class="ghost">Try an example</button>
   <div class="status" id="status"></div>
 </div>
+<div class="matched" id="matched" style="display:none"></div>
 
 <main>
   <aside>
@@ -315,7 +324,7 @@
   </aside>
 
   <section id="results">
-    <div class="card"><div class="empty">Enter a ZIP code above to pull market data, or edit the inputs to analyze a deal.</div></div>
+    <div class="card"><div class="empty">Enter the property's address above to pull market data, or edit the inputs to analyze a deal.</div></div>
   </section>
 </main>
 
@@ -401,37 +410,60 @@ function setStatus(msg, isErr) {
 }
 
 /* ---------- market data ---------- */
+/* A bare 5-digit entry is a ZIP; anything else is an address for the geocoder. */
+function locator() {
+  const raw = $("locator").value.trim();
+  if (!raw) return null;
+  return /^\d{5}$/.test(raw) ? {zip: raw} : {address: raw};
+}
+
+function renderMatched() {
+  const host = $("matched");
+  const g = market && market.geocode;
+  if (!host) return;
+  if (!g) { host.innerHTML = ""; host.style.display = "none"; return; }
+  host.style.display = "flex";
+  const t = market.tract_hpi;
+  host.innerHTML = `<span>Matched <strong>${esc(g.matched_address)}</strong></span>
+    <span class="tag">${esc(g.county)}${g.tract ? ` · census tract ${esc(g.tract)}` : ""} · ${esc(g.source)}</span>
+    ${t ? `<span class="tag">Tract price index ${t.change_1y_pct !== null ? `${t.change_1y_pct > 0 ? "+" : ""}${t.change_1y_pct}% past year` : ""}${t.cagr_10y !== null ? `, ${t.cagr_10y}%/yr over 10` : ""}</span>`
+        : (g.tract ? `<span class="tag">No tract-level price index published here — using ZIP.</span>` : "")}
+    ${g.other_matches && g.other_matches.length ? `<span class="tag">${g.other_matches.length} other match${g.other_matches.length > 1 ? "es" : ""} — refine the address if this is wrong.</span>` : ""}`;
+}
+
 async function loadMarket() {
-  const zip = $("zip").value.trim();
-  if (!/^\d{5}$/.test(zip)) { setStatus("Enter a 5-digit ZIP code.", true); return; }
+  const loc = locator();
+  if (!loc) { setStatus("Enter a property address or a 5-digit ZIP code.", true); return; }
   const price = parseFloat($("askprice").value);
-  setStatus("Loading market data…");
+  setStatus(loc.address ? "Looking up address…" : "Loading market data…");
   $("load").disabled = true;
   try {
-    const qs = new URLSearchParams({zip});
+    const qs = new URLSearchParams(loc);
     if (Number.isFinite(price) && price > 0) qs.set("price", price);
     const r = await fetch("/api/prefill?" + qs);
     if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
     market = await r.json();
     setInputs(market.suggested_inputs);
     const m = market.market;
-    setStatus(`${m.city || m.metro || zip}${m.state ? ", " + m.state : ""} — data as of ${m.home_value.as_of}`);
+    setStatus(`${m.city || m.metro || ""}${m.state ? ", " + m.state : ""} — data as of ${m.home_value.as_of}`);
+    renderMatched();
     await runAnalysis();
-    loadFundamentals(zip, m.state);   // fans out to a dozen series; never block the deal on it
+    loadFundamentals(loc, m.state);   // fans out to a dozen series; never block the deal on it
   } catch (e) {
     setStatus(e.message, true);
     market = null;
+    renderMatched();
   } finally {
     $("load").disabled = false;
   }
 }
 
-async function loadFundamentals(zip, state) {
+async function loadFundamentals(loc, state) {
   fundamentals = null;
   const host = $("fundamentals-card");
   if (host) host.innerHTML = `<div class="card"><div class="empty">Loading market fundamentals…</div></div>`;
   try {
-    const qs = new URLSearchParams({zip});
+    const qs = new URLSearchParams(loc);
     if (state) qs.set("state", state);
     const r = await fetch("/api/fundamentals?" + qs);
     if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
@@ -463,8 +495,12 @@ function renderHints() {
   rateHint.textContent = market.provenance.mortgage_rate.startsWith("FRED")
     ? `30-yr fixed average, ${market.provenance.mortgage_rate.replace("FRED MORTGAGE30US, ", "")} (Freddie Mac via FRED).`
     : "";
-  const hv = m.home_value;
-  if (hv.cagr_10y !== null || hv.cagr_5y !== null) {
+  const hv = m.home_value, tr = market.tract_hpi;
+  if (tr) {
+    apprHint.textContent = `This census tract ran ${pct(tr.change_1y_pct)} past year, `
+      + `${pct(tr.cagr_5y)}/yr over 5, ${pct(tr.cagr_10y)}/yr over 10 (FHFA, ${tr.as_of}). `
+      + `The wider ZIP ran ${pct(hv.cagr_10y)}/yr over 10. Suggested value is capped at 5%.`;
+  } else if (hv.cagr_10y !== null || hv.cagr_5y !== null) {
     apprHint.textContent = `This market ran ${pct(hv.cagr_1y)} past year, ${pct(hv.cagr_5y)}/yr over 5, `
       + `${pct(hv.cagr_10y)}/yr over 10. Suggested value uses the ${market.provenance.appreciation}.`;
   }
@@ -958,10 +994,10 @@ function renderMarketCharts() {
 /* ---------- boot ---------- */
 FIELDS.forEach((f) => $(f).addEventListener("input", scheduleAnalyze));
 $("load").addEventListener("click", loadMarket);
-$("zip").addEventListener("keydown", (e) => { if (e.key === "Enter") loadMarket(); });
+$("locator").addEventListener("keydown", (e) => { if (e.key === "Enter") loadMarket(); });
 $("askprice").addEventListener("keydown", (e) => { if (e.key === "Enter") loadMarket(); });
 $("demo").addEventListener("click", () => {
-  $("zip").value = "44105"; $("askprice").value = "";
+  $("locator").value = "1401 Marlowe Ave, Lakewood, OH"; $("askprice").value = "";
   loadMarket();
 });
 

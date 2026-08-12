@@ -1,9 +1,10 @@
 # Property Investment Analyzer
 
-Underwrite a US residential rental property in seconds. Enter a ZIP code and the
-app pulls live home values, market rents and today's mortgage rate from public
-data sources, pre-fills a complete deal, and tells you whether the numbers work —
-with the reasoning shown, not just a score.
+Underwrite a US residential rental property in seconds. Enter the property's
+address and the app pulls live home values, market rents, neighborhood price
+trends and today's mortgage rate from public data sources, pre-fills a complete
+deal, and tells you whether the numbers work — with the reasoning shown, not
+just a score.
 
 Built for the investor deciding whether to pursue a specific property.
 
@@ -20,17 +21,28 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Open http://127.0.0.1:8000, type a ZIP code, and click **Pull market data**. The
-first market lookup downloads Zillow's research CSVs (~130 MB) and caches them
-under `data/cache/` for 24 hours; later lookups are instant.
+Open http://127.0.0.1:8000, type the property's address, and click **Pull market
+data**. A bare 5-digit ZIP works too. The first lookup downloads the underlying
+research files and caches them under `data/cache/`; later lookups are instant.
 
 ## What it does
 
-**Pulls the market context for you.** Typical home value and rent for the ZIP,
-how both have grown over 1, 5 and 10 years, the local price-to-rent ratio, the
-state's average effective property tax rate, and this week's 30-year fixed
-mortgage rate. Every one of these becomes an editable input, never a hidden
-constant.
+**Resolves the exact property.** An address goes through the Census Geocoder,
+which returns a normalized address, coordinates, ZIP, county and census tract —
+free and without a key. The app shows you what it matched so you can confirm it
+found the right property before trusting the numbers.
+
+**Pulls the market context for you.** Typical home value and rent, how both have
+grown over 1, 5 and 10 years, the local price-to-rent ratio, the state's average
+effective property tax rate, and this week's 30-year fixed mortgage rate. Every
+one of these becomes an editable input, never a hidden constant.
+
+**Uses the finest geography available.** Giving an address rather than a ZIP buys
+census-tract resolution on price trends via the FHFA tract-level index — that is
+neighborhood scale, not city scale, and it can differ sharply from the ZIP
+median. FHFA suppresses tracts with too few recorded transactions (roughly a
+third of them), and those fall back to the ZIP series with the substitution
+stated.
 
 **Runs a real pro forma.** A year-one operating statement from gross scheduled
 rent down to cash flow, with vacancy, maintenance, CapEx reserves, management,
@@ -82,6 +94,8 @@ All public. **No API keys required for anything.**
 
 | Data | Source | Via | Cadence |
 |---|---|---|---|
+| Address → ZIP, county, census tract | [Census Geocoder](https://geocoding.geo.census.gov/) | Direct API | Live |
+| Neighborhood price index | FHFA HPI, census tract | Direct CSV | Annual |
 | Mortgage rates (30/15-yr fixed) | Freddie Mac PMMS | [FRED](https://fred.stlouisfed.org/series/MORTGAGE30US) | Weekly |
 | Typical home value (ZHVI) | [Zillow Research](https://www.zillow.com/research/data/) | Direct CSV | Monthly |
 | Typical rent (ZORI) | Zillow Research | Direct CSV | Monthly |
@@ -174,8 +188,9 @@ The web UI is a client of a documented JSON API — interactive docs at `/docs`.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/prefill?zip=44105&price=95000` | One call: market data, suggested inputs and provenance for a ZIP. `price` is optional and scales the rent estimate. |
-| `GET /api/fundamentals?zip=44105&state=OH` | Jobs, population, migration, listings, supply and rent benchmarks, plus the scored verdict |
+| `GET /api/geocode?address=...` | Normalized address, coordinates, ZIP, county, census tract and the tract price index |
+| `GET /api/prefill?address=...` or `?zip=44105` | One call: market data, suggested inputs and provenance. `price` is optional and scales the rent estimate. |
+| `GET /api/fundamentals?address=...` or `?zip=44105` | Jobs, population, migration, listings, supply and rent benchmarks, plus the scored verdict |
 | `GET /api/market?zip=44105` or `?metro=Austin` | Home value and rent series with growth rates |
 | `GET /api/metros?q=austin` | Metro name lookup |
 | `GET /api/rates` | Current and two years of weekly mortgage rates |
@@ -183,6 +198,8 @@ The web UI is a client of a documented JSON API — interactive docs at `/docs`.
 | `POST /api/analyze` | Full analysis from a deal payload |
 
 ```bash
+curl -G localhost:8000/api/prefill --data-urlencode "address=1401 Marlowe Ave, Lakewood, OH"
+
 curl -X POST localhost:8000/api/analyze -H 'Content-Type: application/json' \
   -d '{"purchase_price": 95000, "monthly_rent": 1216, "interest_rate_pct": 6.69}'
 ```
@@ -190,7 +207,7 @@ curl -X POST localhost:8000/api/analyze -H 'Content-Type: application/json' \
 ## Tests
 
 ```bash
-pytest              # offline: math, API contract, verdict logic
+pytest              # offline: math, API contract, scoring, routing
 pytest -m live      # additionally hits the live public data sources
 ```
 
@@ -203,5 +220,5 @@ app/market_signals.py  county/ZIP fundamentals: jobs, people, listings, supply
 app/main.py            FastAPI routes
 static/index.html      single-page UI, no build step and no external dependencies
 data/migration.json    dated U-Haul Growth Index snapshot (no API exists)
-tests/                 66 tests, offline by default
+tests/                 79 tests, offline by default
 ```

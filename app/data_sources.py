@@ -415,6 +415,110 @@ def _download_ua(url: str, dest: Path) -> None:
     tmp.replace(dest)
 
 
+# ------------------------------------------------------ address geocoding
+
+# The Census Geocoder is free, keyless, and authoritative for US addresses. It
+# returns a normalized address plus the full geography stack, which is what
+# lets an exact address resolve to a census tract instead of just a ZIP.
+GEOCODER_URL = "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
+
+# FHFA annual house price index at census-tract resolution — the finest public
+# price signal available. FHFA suppresses tracts with too few transactions, so
+# coverage is partial and callers must be ready to fall back to the county.
+FHFA_TRACT_URL = "https://www.fhfa.gov/hpi/download/annual/hpi_at_tract.csv"
+
+_tract_hpi_cache: dict[str, dict] = {}
+
+
+def geocode(address: str) -> dict:
+    """Resolve a street address to a normalized address, coordinates, ZIP,
+    county FIPS and census tract."""
+    params = {
+        "address": address,
+        "benchmark": "Public_AR_Current",
+        "vintage": "Current_Current",
+        "format": "json",
+    }
+    try:
+        r = httpx.get(GEOCODER_URL, params=params, timeout=45,
+                      headers={"User-Agent": "property-investment-analyzer/1.0"})
+        r.raise_for_status()
+        matches = r.json()["result"]["addressMatches"]
+    except Exception as exc:
+        raise DataUnavailable(f"Address lookup failed: {exc}") from exc
+    if not matches:
+        raise DataUnavailable(
+            f"No match for '{address}'. Try including city and state, or enter the ZIP code.")
+
+    m = matches[0]
+    geo = m.get("geographies", {})
+
+    def first(layer: str, key: str) -> str | None:
+        rows = geo.get(layer) or []
+        return rows[0].get(key) if rows else None
+
+    comp = m.get("addressComponents", {})
+    county_fips = first("Counties", "GEOID")
+    return {
+        "query": address,
+        "matched_address": m.get("matchedAddress"),
+        "latitude": m["coordinates"]["y"],
+        "longitude": m["coordinates"]["x"],
+        "zip": comp.get("zip"),
+        "city": (comp.get("city") or "").title() or None,
+        "state": comp.get("state"),
+        "county_fips": county_fips,
+        "county": first("Counties", "NAME"),
+        "tract": first("Census Tracts", "GEOID"),
+        "block": first("2020 Census Blocks", "GEOID"),
+        "other_matches": [x.get("matchedAddress") for x in matches[1:4]],
+        "source": "US Census Bureau Geocoder (Public_AR_Current)",
+    }
+
+
+def tract_hpi(tract_geoid: str) -> dict:
+    """FHFA annual house price index for one census tract.
+
+    Scans the 89 MB national file in chunks rather than holding it in memory;
+    results are memoized per tract, so only the first lookup pays the ~1.5s.
+    """
+    if tract_geoid in _tract_hpi_cache:
+        return _tract_hpi_cache[tract_geoid]
+    path = _fetch_csv("fhfa_tract", FHFA_TRACT_URL, TTL_ANNUAL)
+    frames = []
+    for chunk in pd.read_csv(path, dtype={"tract": str}, chunksize=400_000):
+        hit = chunk[chunk["tract"] == tract_geoid]
+        if not hit.empty:
+            frames.append(hit)
+    if not frames:
+        raise DataUnavailable(
+            f"FHFA does not publish a tract-level index for {tract_geoid} "
+            "(too few recorded transactions).")
+    df = pd.concat(frames).sort_values("year")
+    df = df[pd.to_numeric(df["hpi"], errors="coerce").notna()]
+    years = df["year"].astype(int).tolist()
+    values = df["hpi"].astype(float).tolist()
+
+    def cagr(n: int) -> float | None:
+        if len(values) <= n or values[-1 - n] <= 0:
+            return None
+        return round(((values[-1] / values[-1 - n]) ** (1 / n) - 1) * 100, 2)
+
+    latest_change = df["annual_change"].iloc[-1]
+    out = {
+        "tract": tract_geoid,
+        "as_of": years[-1],
+        "index": round(values[-1], 2),
+        "change_1y_pct": round(float(latest_change), 2) if pd.notna(latest_change) else None,
+        "cagr_5y": cagr(5),
+        "cagr_10y": cagr(10),
+        "history": {"years": years[-25:], "values": [round(v, 2) for v in values[-25:]]},
+        "source": "FHFA annual house price index, census-tract level",
+    }
+    _tract_hpi_cache[tract_geoid] = out
+    return out
+
+
 _pep: pd.DataFrame | None = None
 
 

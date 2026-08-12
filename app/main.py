@@ -113,8 +113,43 @@ def _conservative_appreciation(home_value: dict) -> tuple[float, str]:
     return round(value, 2), basis
 
 
+def _resolve(zip: str | None, address: str | None) -> tuple[str, dict | None]:
+    """Turn whichever locator the caller supplied into a ZIP plus, when an
+    address was given, the geocode result that produced it."""
+    if address:
+        geo = ds.geocode(address)
+        if not geo.get("zip"):
+            raise HTTPException(status_code=404,
+                                detail=f"Geocoder matched '{geo['matched_address']}' but returned no ZIP.")
+        return geo["zip"], geo
+    if zip:
+        return zip.strip(), None
+    raise HTTPException(status_code=400, detail="Provide either an address or a zip.")
+
+
+@app.get("/api/geocode")
+def geocode(address: str = Query(min_length=4)) -> dict:
+    """Resolve a street address to a normalized address, ZIP, county and census
+    tract, with the tract-level price index when FHFA publishes one."""
+    try:
+        geo = ds.geocode(address)
+    except ds.DataUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if geo.get("tract"):
+        try:
+            geo["tract_hpi"] = ds.tract_hpi(geo["tract"])
+        except ds.DataUnavailable as exc:
+            geo["tract_hpi"] = None
+            geo["tract_hpi_note"] = str(exc)
+    return geo
+
+
 @app.get("/api/prefill")
-def prefill(zip: str = Query(min_length=5, max_length=5), price: float | None = None) -> dict:
+def prefill(
+    zip: str | None = Query(default=None, min_length=5, max_length=5),
+    address: str | None = Query(default=None, description="Street address; resolved via Census Geocoder"),
+    price: float | None = None,
+) -> dict:
     """One call that assembles a ready-to-analyze deal for a ZIP code:
     market home value, market rent, local tax rate, and today's mortgage rate.
 
@@ -123,9 +158,19 @@ def prefill(zip: str = Query(min_length=5, max_length=5), price: float | None = 
     still reflects how this property compares to the ZIP median.
     """
     try:
-        mkt = ds.market_by_zip(zip)
+        resolved_zip, geo = _resolve(zip, address)
+        mkt = ds.market_by_zip(resolved_zip)
     except ds.DataUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    # An exact address buys census-tract resolution, which is a far tighter
+    # read on appreciation than the ZIP median — when FHFA publishes the tract.
+    tract = None
+    if geo and geo.get("tract"):
+        try:
+            tract = ds.tract_hpi(geo["tract"])
+        except ds.DataUnavailable:
+            tract = None
 
     market_value = mkt["home_value"]["latest"]
     market_rent = mkt["rent"]["latest"] if mkt.get("rent") else None
@@ -144,11 +189,18 @@ def prefill(zip: str = Query(min_length=5, max_length=5), price: float | None = 
     except ds.DataUnavailable:
         rate, rate_as_of = 6.5, None
 
-    appreciation, appreciation_basis = _conservative_appreciation(mkt["home_value"])
+    if tract and (tract["cagr_10y"] is not None or tract["cagr_5y"] is not None):
+        appreciation, appreciation_basis = _conservative_appreciation({
+            "cagr_10y": tract["cagr_10y"], "cagr_5y": tract["cagr_5y"]})
+        appreciation_basis = f"census tract {tract['tract']} {appreciation_basis}"
+    else:
+        appreciation, appreciation_basis = _conservative_appreciation(mkt["home_value"])
     rent_growth = (mkt["rent"]["cagr_5y"] if mkt.get("rent") else None)
     rent_growth = 3.0 if rent_growth is None else max(0.0, min(5.0, rent_growth))
 
     return {
+        "geocode": geo,
+        "tract_hpi": tract,
         "market": mkt,
         "suggested_inputs": {
             "purchase_price": round(use_price),
@@ -171,19 +223,30 @@ def prefill(zip: str = Query(min_length=5, max_length=5), price: float | None = 
 
 @app.get("/api/fundamentals")
 def fundamentals(
-    zip: str = Query(min_length=5, max_length=5),
+    zip: str | None = Query(default=None, min_length=5, max_length=5),
+    address: str | None = Query(default=None, description="Street address; resolved via Census Geocoder"),
     state: str | None = Query(default=None, description="Two-letter state, for migration context"),
 ) -> dict:
-    """Demand-side market health for the county containing this ZIP: jobs,
-    listing velocity, supply pipeline, incomes and migration.
+    """Demand-side market health around this property: jobs, listing velocity,
+    supply pipeline, incomes and migration.
 
     Separate from /api/prefill because it fans out to a dozen upstream series;
     the UI loads it alongside the deal so neither blocks the other.
     """
     try:
-        return ms.market_report(zip, state)
+        resolved_zip, geo = _resolve(zip, address)
+        report = ms.market_report(resolved_zip, state or (geo or {}).get("state"))
     except ds.DataUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if geo:
+        report["geocode"] = geo
+        report["tract_hpi"] = None
+        if geo.get("tract"):
+            try:
+                report["tract_hpi"] = ds.tract_hpi(geo["tract"])
+            except ds.DataUnavailable as exc:
+                report["tract_hpi_note"] = str(exc)
+    return report
 
 
 @app.get("/api/sources")
@@ -214,6 +277,10 @@ def sources() -> dict:
              "lag": "~1 year", "used_for": "income growth, rent affordability ceiling"},
             {"name": "Census Building Permits Survey", "via": "FRED (county)", "cadence": "annual",
              "lag": "~1 quarter", "used_for": "incoming supply"},
+            {"name": "Census Geocoder", "via": "geocoding.geo.census.gov", "cadence": "continuous",
+             "lag": "live", "used_for": "resolving a street address to ZIP, county and census tract"},
+            {"name": "FHFA House Price Index, census tract", "via": "fhfa.gov", "cadence": "annual",
+             "lag": "~1 quarter", "used_for": "neighborhood-level appreciation when an address is given"},
             {"name": "Census ZCTA-to-county crosswalk", "via": "census.gov", "cadence": "decennial",
              "lag": "static", "used_for": "resolving a ZIP to its county"},
             {"name": "U-Haul Growth Index", "via": "bundled snapshot", "cadence": "annual press release",
@@ -226,6 +293,9 @@ def sources() -> dict:
              "Use the county assessor's recorded deed transfers or a paid comps API."},
             {"item": "County assessor parcel and tax records", "why": "No national API — every county "
              "publishes differently. Many expose ArcGIS REST services; a per-county adapter is needed."},
+            {"item": "Price index for every census tract", "why": "FHFA suppresses tracts with too few "
+             "recorded transactions, so roughly a third of tracts have no published index. Those fall "
+             "back to the ZIP-level series."},
             {"item": "Daily mortgage rates", "why": "PMMS is a weekly survey. Daily pricing is commercial."},
         ],
     }
