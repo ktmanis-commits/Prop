@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Property Investment Analyzer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M4 15L16 5l12 10v13H4z' fill='none' stroke='%232a78d6' stroke-width='2.5' stroke-linejoin='round'/%3E%3Cpath d='M10 22l4-4 3 3 5-6' fill='none' stroke='%231baf7a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --field: #ffffff;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --serious: #ec835a;
+    --critical: #d03b3b;
+    --success-text: #006300;
+    --div-mid: #f0efec;
+    --div-pos: #1c5cab;
+    --div-neg: #b52f2f;
+    --shadow: 0 1px 2px rgba(11,11,11,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255,255,255,0.10);
+      --field: #232322;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --series-3: #199e70;
+      --success-text: #0ca30c;
+      --div-mid: #383835;
+      --div-pos: #86b6ef;
+      --div-neg: #e88585;
+      --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --field: #232322;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --success-text: #0ca30c;
+    --div-mid: #383835;
+    --div-pos: #86b6ef;
+    --div-neg: #e88585;
+    --shadow: none;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    padding: 22px 24px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-1);
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 0; color: var(--text-secondary); font-size: 13.5px; max-width: 70ch; }
+
+  /* ---- market lookup: one filter row above everything it scopes ---- */
+  .lookup {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+    padding: 14px 24px; background: var(--surface-1);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .lookup .f { display: flex; flex-direction: column; gap: 4px; }
+  .lookup label { font-size: 11.5px; color: var(--text-muted); font-weight: 550; text-transform: uppercase; letter-spacing: .04em; }
+  input, select {
+    font: inherit; color: var(--text-primary); background: var(--field);
+    border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible {
+    outline: 2px solid var(--series-1); outline-offset: 1px;
+  }
+  .lookup input { width: 130px; }
+  button {
+    font: inherit; font-weight: 550; cursor: pointer;
+    background: var(--series-1); color: #fff; border: 1px solid transparent;
+    border-radius: 7px; padding: 8px 14px;
+  }
+  button:hover { filter: brightness(1.06); }
+  button.ghost { background: transparent; color: var(--text-secondary); border-color: var(--border); }
+  .status { font-size: 13px; color: var(--text-secondary); align-self: center; padding-bottom: 6px; }
+  .status.err { color: var(--critical); }
+
+  main { display: grid; grid-template-columns: 320px minmax(0,1fr); gap: 20px; padding: 20px 24px 60px; align-items: start; }
+  @media (max-width: 940px) { main { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 560px) {
+    main { padding: 14px 12px 40px; gap: 14px; }
+    header, .lookup { padding-left: 14px; padding-right: 14px; }
+    .card { padding: 14px; }
+    .row { grid-template-columns: minmax(0, 1fr) 92px; }
+    .hero .fig { font-size: 42px; }
+  }
+
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow);
+  }
+  .card + .card { margin-top: 16px; }
+  .card h2 { margin: 0 0 2px; font-size: 14px; font-weight: 620; letter-spacing: -0.005em; }
+  .card .sub { margin: 0 0 14px; font-size: 12.5px; color: var(--text-muted); }
+
+  /* ---- inputs sidebar ---- */
+  aside { position: sticky; top: 76px; }
+  @media (max-width: 940px) { aside { position: static; } }
+  fieldset { border: 0; padding: 0; margin: 0 0 16px; }
+  fieldset legend {
+    font-size: 11.5px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: .04em; padding: 0 0 8px;
+  }
+  .row { display: grid; grid-template-columns: 1fr 108px; gap: 8px; align-items: center; margin-bottom: 7px; }
+  .row label { font-size: 13px; color: var(--text-secondary); }
+  .row input { width: 100%; text-align: right; font-variant-numeric: tabular-nums; padding: 5px 8px; }
+  .hint { font-size: 11.5px; color: var(--text-muted); margin: -3px 0 8px; }
+  .hint.flag { color: var(--serious); }
+
+  /* ---- verdict ---- */
+  .verdict { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .hero { min-width: 190px; }
+  .hero .label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 550; }
+  .hero .fig { font-size: 52px; font-weight: 640; line-height: 1.05; letter-spacing: -0.02em; margin-top: 2px; }
+  .hero .cap { font-size: 14px; color: var(--text-secondary); margin-top: 2px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 580; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--border); margin-top: 10px; }
+  .pill .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  ul.reasons { margin: 0; padding-left: 0; list-style: none; flex: 1; min-width: 260px; }
+  ul.reasons li { position: relative; padding-left: 20px; margin-bottom: 8px; font-size: 13.5px; color: var(--text-secondary); }
+  ul.reasons li::before {
+    content: ""; position: absolute; left: 4px; top: 7px;
+    width: 7px; height: 7px; border-radius: 50%; background: var(--icon, var(--text-muted));
+  }
+
+  /* ---- stat tiles ---- */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px,1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-top: 16px; }
+  .tile { background: var(--surface-1); padding: 13px 15px; }
+  .tile .k { font-size: 11.5px; color: var(--text-muted); font-weight: 550; text-transform: uppercase; letter-spacing: .03em; }
+  .tile .v { font-size: 25px; font-weight: 620; letter-spacing: -0.015em; margin-top: 3px; }
+  .tile .d { font-size: 12px; color: var(--text-secondary); margin-top: 1px; }
+
+  /* ---- tables ---- */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; font-variant-numeric: normal; }
+  thead th { font-size: 11.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid var(--axis); }
+  tr.total td { font-weight: 620; border-top: 1px solid var(--axis); border-bottom: none; }
+  tr.sub td:first-child { padding-left: 22px; color: var(--text-secondary); }
+  tr.spacer td { border: 0; height: 6px; padding: 0; }
+  .neg { color: var(--critical); }
+  .pos { color: var(--success-text); }
+  .scroll { overflow-x: auto; }
+
+  /* ---- charts ---- */
+  .chart-wrap { position: relative; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 10px; font-size: 12.5px; color: var(--text-secondary); }
+  .legend .item { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .key { width: 14px; height: 3px; border-radius: 2px; flex: none; }
+  .tip {
+    position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.13);
+    white-space: nowrap; z-index: 10; color: var(--text-primary);
+  }
+  .tip .th { font-weight: 600; margin-bottom: 5px; }
+  .tip .tr { display: flex; align-items: center; gap: 7px; justify-content: space-between; }
+  .tip .tr span:last-child { font-variant-numeric: tabular-nums; font-weight: 550; }
+  .tip .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; margin-right: 2px; }
+  .toggle { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .toggle button { background: transparent; color: var(--text-secondary); border: 0; border-radius: 0; padding: 4px 11px; font-size: 12.5px; font-weight: 550; }
+  .toggle button[aria-pressed="true"] { background: var(--series-1); color: #fff; }
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+
+  /* ---- heatmap ---- */
+  .heat { border-collapse: separate; border-spacing: 2px; font-size: 12.5px; }
+  .heat td, .heat th { border: 0; padding: 0; }
+  .heat th { font-size: 11.5px; color: var(--text-muted); font-weight: 600; padding: 3px 6px; }
+  .heat td.cell { border-radius: 5px; text-align: center; padding: 9px 6px; font-variant-numeric: tabular-nums; font-weight: 550; min-width: 74px; }
+
+  .sources { margin-top: 16px; font-size: 12px; color: var(--text-muted); }
+  .sources li { margin-bottom: 3px; }
+  .disclaim { margin-top: 10px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--grid); padding-top: 10px; }
+  .empty { color: var(--text-muted); font-size: 13.5px; padding: 30px 0; text-align: center; }
+  .vhide { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Property Investment Analyzer</h1>
+  <p>Underwrite a residential rental in seconds. Enter a ZIP code to pull live home values, market rents and today's mortgage rate from public data, then adjust any assumption to see how the deal holds up.</p>
+</header>
+
+<div class="lookup">
+  <div class="f">
+    <label for="zip">ZIP code</label>
+    <input id="zip" inputmode="numeric" maxlength="5" placeholder="78704" value="">
+  </div>
+  <div class="f">
+    <label for="askprice">Asking price (optional)</label>
+    <input id="askprice" inputmode="numeric" placeholder="market median">
+  </div>
+  <button id="load">Pull market data</button>
+  <button id="demo" class="ghost">Try an example</button>
+  <div class="status" id="status"></div>
+</div>
+
+<main>
+  <aside>
+    <div class="card">
+      <h2>Deal inputs</h2>
+      <p class="sub">Every figure is editable. Results update as you type.</p>
+      <form id="form">
+        <fieldset>
+          <legend>Purchase &amp; financing</legend>
+          <div class="row"><label for="purchase_price">Purchase price</label><input id="purchase_price" type="number" step="1000" value="350000"></div>
+          <div class="row"><label for="down_payment_pct">Down payment %</label><input id="down_payment_pct" type="number" step="0.5" value="20"></div>
+          <div class="row"><label for="interest_rate_pct">Interest rate %</label><input id="interest_rate_pct" type="number" step="0.05" value="6.5"></div>
+          <div class="hint" id="rate-hint"></div>
+          <div class="row"><label for="loan_term_years">Loan term (yrs)</label><input id="loan_term_years" type="number" step="1" value="30"></div>
+          <div class="row"><label for="closing_costs_pct">Closing costs %</label><input id="closing_costs_pct" type="number" step="0.25" value="3"></div>
+          <div class="row"><label for="rehab_cost">Rehab budget</label><input id="rehab_cost" type="number" step="1000" value="0"></div>
+          <div class="row"><label for="after_repair_value">After-repair value</label><input id="after_repair_value" type="number" step="1000" value="0"></div>
+          <div class="hint">Leave after-repair value at 0 to use price + rehab.</div>
+        </fieldset>
+        <fieldset>
+          <legend>Income</legend>
+          <div class="row"><label for="monthly_rent">Monthly rent</label><input id="monthly_rent" type="number" step="25" value="2600"></div>
+          <div class="hint" id="rent-hint"></div>
+          <div class="row"><label for="other_monthly_income">Other income /mo</label><input id="other_monthly_income" type="number" step="10" value="0"></div>
+          <div class="row"><label for="vacancy_pct">Vacancy %</label><input id="vacancy_pct" type="number" step="0.5" value="5"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Operating expenses</legend>
+          <div class="row"><label for="property_tax_rate_pct">Property tax %/yr</label><input id="property_tax_rate_pct" type="number" step="0.05" value="1.1"></div>
+          <div class="hint" id="tax-hint"></div>
+          <div class="row"><label for="annual_insurance">Insurance /yr</label><input id="annual_insurance" type="number" step="50" value="1500"></div>
+          <div class="row"><label for="maintenance_pct">Maintenance % rent</label><input id="maintenance_pct" type="number" step="0.5" value="5"></div>
+          <div class="row"><label for="capex_pct">CapEx reserve % rent</label><input id="capex_pct" type="number" step="0.5" value="5"></div>
+          <div class="row"><label for="management_pct">Management % rent</label><input id="management_pct" type="number" step="0.5" value="8"></div>
+          <div class="row"><label for="monthly_hoa">HOA /mo</label><input id="monthly_hoa" type="number" step="10" value="0"></div>
+          <div class="row"><label for="monthly_utilities">Utilities /mo</label><input id="monthly_utilities" type="number" step="10" value="0"></div>
+          <div class="row"><label for="other_monthly_expenses">Other /mo</label><input id="other_monthly_expenses" type="number" step="10" value="0"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Projection assumptions</legend>
+          <div class="row"><label for="annual_appreciation_pct">Appreciation %/yr</label><input id="annual_appreciation_pct" type="number" step="0.1" value="3.5"></div>
+          <div class="hint" id="appr-hint"></div>
+          <div class="row"><label for="annual_rent_growth_pct">Rent growth %/yr</label><input id="annual_rent_growth_pct" type="number" step="0.1" value="3"></div>
+          <div class="row"><label for="annual_expense_growth_pct">Expense growth %/yr</label><input id="annual_expense_growth_pct" type="number" step="0.1" value="2.5"></div>
+          <div class="row"><label for="holding_period_years">Holding period (yrs)</label><input id="holding_period_years" type="number" step="1" value="10"></div>
+          <div class="row"><label for="selling_costs_pct">Selling costs %</label><input id="selling_costs_pct" type="number" step="0.5" value="7"></div>
+        </fieldset>
+      </form>
+    </div>
+  </aside>
+
+  <section id="results">
+    <div class="card"><div class="empty">Enter a ZIP code above to pull market data, or edit the inputs to analyze a deal.</div></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const FIELDS = ["purchase_price","down_payment_pct","interest_rate_pct","loan_term_years","closing_costs_pct",
+  "rehab_cost","after_repair_value","monthly_rent","other_monthly_income","vacancy_pct","property_tax_rate_pct",
+  "annual_insurance","maintenance_pct","capex_pct","management_pct","monthly_hoa","monthly_utilities",
+  "other_monthly_expenses","annual_appreciation_pct","annual_rent_growth_pct","annual_expense_growth_pct",
+  "holding_period_years","selling_costs_pct"];
+
+let market = null;        // last /api/prefill payload
+let lastResult = null;    // last /api/analyze payload
+let projectionView = "chart";
+
+/* ---------- formatting ---------- */
+const usd = (n, dp = 0) => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString("en-US", {minimumFractionDigits: dp, maximumFractionDigits: dp});
+const compact = (n) => {
+  const a = Math.abs(n), s = n < 0 ? "-" : "";
+  if (a >= 1e6) return s + "$" + (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M";
+  if (a >= 1e3) return s + "$" + Math.round(a / 1e3) + "K";
+  return s + "$" + Math.round(a);
+};
+const pct = (n, dp = 1) => (n === null || n === undefined) ? "—" : n.toFixed(dp) + "%";
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+/* ---------- input plumbing ---------- */
+function readInputs() {
+  const o = {};
+  for (const f of FIELDS) {
+    const v = parseFloat($(f).value);
+    o[f] = Number.isFinite(v) ? v : 0;
+  }
+  return o;
+}
+const WHOLE_DOLLAR = new Set(["purchase_price", "monthly_rent", "rehab_cost", "after_repair_value",
+  "annual_insurance", "other_monthly_income", "monthly_hoa", "monthly_utilities", "other_monthly_expenses"]);
+function setInputs(vals) {
+  for (const [k, v] of Object.entries(vals)) {
+    if (v === null || v === undefined || !$(k)) continue;
+    $(k).value = WHOLE_DOLLAR.has(k) ? Math.round(v) : Math.round(v * 100) / 100;
+  }
+}
+
+let timer = null;
+function scheduleAnalyze() {
+  clearTimeout(timer);
+  timer = setTimeout(runAnalysis, 220);
+}
+
+async function runAnalysis() {
+  const body = readInputs();
+  if (!(body.purchase_price > 0)) return;
+  try {
+    const r = await fetch("/api/analyze", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    lastResult = await r.json();
+    render();
+  } catch (e) {
+    setStatus("Analysis failed: " + e.message, true);
+  }
+}
+
+function setStatus(msg, isErr) {
+  const el = $("status");
+  el.textContent = msg || "";
+  el.classList.toggle("err", !!isErr);
+}
+
+/* ---------- market data ---------- */
+async function loadMarket() {
+  const zip = $("zip").value.trim();
+  if (!/^\d{5}$/.test(zip)) { setStatus("Enter a 5-digit ZIP code.", true); return; }
+  const price = parseFloat($("askprice").value);
+  setStatus("Loading market data…");
+  $("load").disabled = true;
+  try {
+    const qs = new URLSearchParams({zip});
+    if (Number.isFinite(price) && price > 0) qs.set("price", price);
+    const r = await fetch("/api/prefill?" + qs);
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    market = await r.json();
+    setInputs(market.suggested_inputs);
+    const m = market.market;
+    setStatus(`${m.city || m.metro || zip}${m.state ? ", " + m.state : ""} — data as of ${m.home_value.as_of}`);
+    await runAnalysis();
+  } catch (e) {
+    setStatus(e.message, true);
+    market = null;
+  } finally {
+    $("load").disabled = false;
+  }
+}
+
+function renderHints() {
+  const rentHint = $("rent-hint"), taxHint = $("tax-hint"), rateHint = $("rate-hint"), apprHint = $("appr-hint");
+  [rentHint, taxHint, rateHint, apprHint].forEach((el) => { el.textContent = ""; el.classList.remove("flag"); });
+  if (!market) return;
+  const m = market.market;
+
+  if (m.rent && m.rent.latest) {
+    const entered = parseFloat($("monthly_rent").value) || 0;
+    const diff = entered && m.rent.latest ? (entered / m.rent.latest - 1) * 100 : 0;
+    const scope = m.rent.level === "zip" ? "ZIP" : "metro";
+    let txt = `Market rent (Zillow ZORI, ${scope}): ${usd(m.rent.latest)}/mo.`;
+    if (entered && Math.abs(diff) >= 12) {
+      txt += ` Your figure is ${Math.abs(diff).toFixed(0)}% ${diff > 0 ? "above" : "below"} it — verify with local comps.`;
+      rentHint.classList.add("flag");
+    }
+    rentHint.textContent = txt;
+  }
+  if (m.tax) taxHint.textContent = `${m.tax.state} average is ${m.tax.effective_rate_pct}% — county rates vary, verify locally.`;
+  rateHint.textContent = market.provenance.mortgage_rate.startsWith("FRED")
+    ? `30-yr fixed average, ${market.provenance.mortgage_rate.replace("FRED MORTGAGE30US, ", "")} (Freddie Mac via FRED).`
+    : "";
+  const hv = m.home_value;
+  if (hv.cagr_10y !== null || hv.cagr_5y !== null) {
+    apprHint.textContent = `This market ran ${pct(hv.cagr_1y)} past year, ${pct(hv.cagr_5y)}/yr over 5, `
+      + `${pct(hv.cagr_10y)}/yr over 10. Suggested value uses the ${market.provenance.appreciation}.`;
+  }
+}
+
+/* ---------- charts ---------- */
+function lineChart(el, cfg) {
+  const W = Math.max(el.clientWidth || 640, 280);
+  const H = cfg.height || 240;
+  const P = {t: 14, r: cfg.padRight ?? 54, b: 26, l: cfg.padLeft ?? 56};
+  const iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const all = cfg.series.flatMap((s) => s.values);
+  let min = Math.min(...all), max = Math.max(...all);
+  if (cfg.zeroBase) min = Math.min(0, min);
+  if (min === max) { min -= 1; max += 1; }
+  const padv = (max - min) * 0.08; min -= padv; max += padv;
+  const n = cfg.labels.length;
+  const x = (i) => P.l + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw);
+  const y = (v) => P.t + ih - ((v - min) / (max - min)) * ih;
+
+  // clean tick values
+  const ticks = [];
+  const rawStep = (max - min) / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= rawStep) || mag * 10;
+  for (let t = Math.ceil(min / step) * step; t <= max; t += step) ticks.push(t);
+
+  const svgns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", cfg.ariaLabel || "");
+  const add = (tag, attrs, text) => {
+    const e = document.createElementNS(svgns, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (text !== undefined) e.textContent = text;
+    svg.appendChild(e);
+    return e;
+  };
+
+  for (const t of ticks) {
+    add("line", {x1: P.l, x2: P.l + iw, y1: y(t), y2: y(t), stroke: cssVar("--grid"), "stroke-width": 1});
+    add("text", {x: P.l - 8, y: y(t) + 4, "text-anchor": "end", fill: cssVar("--text-muted"),
+      "font-size": 11, "font-variant-numeric": "tabular-nums"}, cfg.fmtAxis(t));
+  }
+  add("line", {x1: P.l, x2: P.l + iw, y1: P.t + ih, y2: P.t + ih, stroke: cssVar("--axis"), "stroke-width": 1});
+  if (min < 0 && max > 0) add("line", {x1: P.l, x2: P.l + iw, y1: y(0), y2: y(0), stroke: cssVar("--axis"), "stroke-width": 1});
+
+  const every = Math.max(1, Math.ceil(n / (W < 420 ? 5 : 9)));
+  cfg.labels.forEach((lab, i) => {
+    if (i % every === 0 || i === n - 1) {
+      add("text", {x: x(i), y: H - 8, "text-anchor": "middle", fill: cssVar("--text-muted"), "font-size": 11}, lab);
+    }
+  });
+
+  cfg.series.forEach((s) => {
+    const color = cssVar(s.color);
+    if (s.area) {
+      const d = s.values.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ")
+        + ` L${x(n - 1)},${y(Math.max(min, 0))} L${x(0)},${y(Math.max(min, 0))} Z`;
+      add("path", {d, fill: color, "fill-opacity": 0.1, stroke: "none"});
+    }
+    add("path", {
+      d: s.values.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" "),
+      fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round",
+    });
+    const li = n - 1;
+    add("circle", {cx: x(li), cy: y(s.values[li]), r: 4.5, fill: color,
+      stroke: cssVar("--surface-1"), "stroke-width": 2});
+    if (s.endLabel) {
+      add("text", {x: x(li) + 9, y: y(s.values[li]) + 4, fill: cssVar("--text-secondary"),
+        "font-size": 11.5, "font-weight": 550}, cfg.fmtAxis(s.values[li]));
+    }
+  });
+
+  el.innerHTML = "";
+  el.appendChild(svg);
+
+  // hover layer: crosshair + tooltip
+  const tip = document.createElement("div");
+  tip.className = "tip";
+  el.appendChild(tip);
+  const cross = add("line", {x1: 0, x2: 0, y1: P.t, y2: P.t + ih, stroke: cssVar("--axis"),
+    "stroke-width": 1, opacity: 0});
+  const dots = cfg.series.map((s) => add("circle", {r: 4.5, fill: cssVar(s.color),
+    stroke: cssVar("--surface-1"), "stroke-width": 2, opacity: 0}));
+  const hit = add("rect", {x: P.l, y: P.t, width: iw, height: ih, fill: "transparent"});
+  hit.style.cursor = "crosshair";
+
+  const show = (i) => {
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", 1);
+    cfg.series.forEach((s, k) => {
+      dots[k].setAttribute("cx", x(i)); dots[k].setAttribute("cy", y(s.values[i]));
+      dots[k].setAttribute("opacity", 1);
+    });
+    tip.innerHTML = `<div class="th">${esc(cfg.tipTitle ? cfg.tipTitle(i) : cfg.labels[i])}</div>` +
+      cfg.series.map((s) => `<div class="tr"><span><i class="sw" style="background:${cssVar(s.color)}"></i>${esc(s.name)}</span><span>${esc(cfg.fmtTip(s.values[i]))}</span></div>`).join("");
+    tip.style.opacity = 1;
+    const scale = el.clientWidth / W;
+    const left = x(i) * scale;
+    tip.style.left = Math.min(Math.max(left + 12, 0), el.clientWidth - tip.offsetWidth - 4) + "px";
+    tip.style.top = P.t * scale + "px";
+  };
+  const hide = () => { tip.style.opacity = 0; cross.setAttribute("opacity", 0); dots.forEach((d) => d.setAttribute("opacity", 0)); };
+  hit.addEventListener("mousemove", (ev) => {
+    const rect = el.getBoundingClientRect();
+    const px = (ev.clientX - rect.left) / (el.clientWidth / W);
+    const i = Math.max(0, Math.min(n - 1, Math.round(((px - P.l) / iw) * (n - 1))));
+    show(i);
+  });
+  hit.addEventListener("mouseleave", hide);
+  el.tabIndex = 0;
+  let focusIdx = n - 1;
+  el.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowRight") { focusIdx = Math.min(n - 1, focusIdx + 1); show(focusIdx); ev.preventDefault(); }
+    if (ev.key === "ArrowLeft") { focusIdx = Math.max(0, focusIdx - 1); show(focusIdx); ev.preventDefault(); }
+    if (ev.key === "Escape") hide();
+  });
+  el.addEventListener("blur", hide);
+}
+
+function legendHTML(items) {
+  return `<div class="legend">` + items.map((i) =>
+    `<span class="item"><span class="key" style="background:${cssVar(i.color)}"></span>${esc(i.name)}</span>`).join("") + `</div>`;
+}
+
+/* diverging cell color: gray midpoint → blue (positive) / red (negative) */
+function divergingColor(v, maxAbs) {
+  const t = Math.min(1, Math.abs(v) / (maxAbs || 1));
+  const mid = hexToRgb(cssVar("--div-mid"));
+  const pole = hexToRgb(cssVar(v >= 0 ? "--div-pos" : "--div-neg"));
+  const mix = mid.map((c, i) => Math.round(c + (pole[i] - c) * t));
+  return {css: `rgb(${mix.join(",")})`, strong: t > 0.55};
+}
+function hexToRgb(h) {
+  h = h.replace("#", "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+}
+
+/* ---------- render ---------- */
+function render() {
+  if (!lastResult) return;
+  const r = lastResult;
+  const out = [];
+  const cf = r.year_one.monthly_cash_flow;
+  const v = r.verdict;
+  const statusColor = v.score >= 70 ? "--good" : v.score >= 50 ? "--series-1" : v.score >= 30 ? "--warning" : "--critical";
+
+  /* verdict */
+  out.push(`<div class="card">
+    <div class="verdict">
+      <div class="hero">
+        <div class="label">Monthly cash flow</div>
+        <div class="fig" style="color:${cf < 0 ? cssVar("--critical") : "inherit"}">${usd(cf)}</div>
+        <div class="cap">after all expenses, reserves and debt service</div>
+        <div class="pill"><span class="dot" style="background:${cssVar(statusColor)}"></span>${esc(v.label)} · ${v.score}/100</div>
+      </div>
+      <ul class="reasons" style="--icon:${cssVar(statusColor)}">
+        ${v.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}
+      </ul>
+    </div>
+    <div class="tiles">
+      ${tile("Cap rate", pct(r.metrics.cap_rate_pct), "NOI ÷ property value")}
+      ${tile("Cash-on-cash", pct(r.metrics.cash_on_cash_pct), `on ${usd(r.acquisition.total_cash_invested)} invested`)}
+      ${tile("DSCR", r.metrics.dscr === null ? "—" : r.metrics.dscr.toFixed(2), "lenders want ≥ 1.25")}
+      ${tile(`${r.projection.sale_year}-yr IRR`, pct(r.projection.irr_pct), "incl. sale proceeds")}
+      ${tile("Rent-to-price", pct(r.metrics.rent_to_price_pct, 2), "the “1% rule”")}
+      ${tile("Break-even occupancy", pct(r.metrics.break_even_occupancy_pct), "of gross rent")}
+    </div>
+  </div>`);
+
+  /* pro forma */
+  const e = r.year_one.expenses;
+  const money = (n) => `<td class="${n < 0 ? "neg" : ""}">${usd(n)}</td>`;
+  out.push(`<div class="card">
+    <h2>Year-one pro forma</h2>
+    <p class="sub">What the property earns and spends in its first full year of operation.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Line item</th><th>Annual</th><th>Monthly</th></tr></thead>
+      <tbody>
+        ${proRow("Gross scheduled rent", r.year_one.gross_rent)}
+        ${r.year_one.other_income ? proRow("Other income", r.year_one.other_income, true) : ""}
+        ${proRow("Vacancy loss", -r.year_one.vacancy_loss, true)}
+        ${proRow("Effective gross income", r.year_one.effective_gross_income, false, "total")}
+        <tr class="spacer"><td colspan="3"></td></tr>
+        ${proRow("Property tax", -e.property_tax, true)}
+        ${proRow("Insurance", -e.insurance, true)}
+        ${proRow("Maintenance", -e.maintenance, true)}
+        ${proRow("CapEx reserve", -e.capex_reserve, true)}
+        ${proRow("Property management", -e.management, true)}
+        ${e.hoa ? proRow("HOA", -e.hoa, true) : ""}
+        ${e.utilities ? proRow("Utilities", -e.utilities, true) : ""}
+        ${e.other ? proRow("Other", -e.other, true) : ""}
+        ${proRow("Operating expenses", -e.total, false, "total")}
+        <tr class="spacer"><td colspan="3"></td></tr>
+        ${proRow("Net operating income", r.year_one.noi, false, "total")}
+        ${proRow("Debt service", -r.year_one.annual_debt_service, true)}
+        ${proRow("Cash flow", r.year_one.annual_cash_flow, false, "total")}
+      </tbody>
+    </table></div>
+    <div class="tiles">
+      ${tile("Cash to close", usd(r.acquisition.total_cash_invested), `${usd(r.acquisition.down_payment)} down + ${usd(r.acquisition.closing_costs)} costs${r.acquisition.rehab_cost ? " + rehab" : ""}`)}
+      ${tile("Loan amount", usd(r.acquisition.loan_amount), `${usd(r.acquisition.monthly_pi_payment)}/mo P&amp;I`)}
+      ${tile("Operating expense ratio", pct(r.metrics.operating_expense_ratio_pct), "of effective gross income")}
+      ${tile("Gross rent multiplier", r.metrics.gross_rent_multiplier === null ? "—" : r.metrics.gross_rent_multiplier.toFixed(1) + "×", "price ÷ annual rent")}
+    </div>
+  </div>`);
+
+  /* projection */
+  out.push(`<div class="card">
+    <div class="card-head">
+      <div>
+        <h2>Equity and cash-flow projection</h2>
+        <p class="sub">Property value, remaining loan balance and your equity over a ${r.projection.sale_year}-year hold. All figures in dollars.</p>
+      </div>
+      <div class="toggle" role="group" aria-label="Projection view">
+        <button type="button" data-view="chart" aria-pressed="${projectionView === "chart"}">Chart</button>
+        <button type="button" data-view="table" aria-pressed="${projectionView === "table"}">Table</button>
+      </div>
+    </div>
+    <div id="projection-body"></div>
+    <div class="tiles">
+      ${tile("Net sale proceeds", compact(r.projection.net_sale_proceeds), `year ${r.projection.sale_year}, after selling costs`)}
+      ${tile("Total profit", compact(r.projection.total_profit), "cash flow + sale, less cash in")}
+      ${tile("Equity multiple", r.projection.equity_multiple === null ? "—" : r.projection.equity_multiple.toFixed(2) + "×", "cash out ÷ cash in")}
+      ${tile("Cumulative cash flow", compact(r.projection.years[r.projection.years.length - 1].cumulative_cash_flow), "before sale")}
+    </div>
+  </div>`);
+
+  /* sensitivity */
+  out.push(`<div class="card">
+    <h2>What if you are wrong?</h2>
+    <p class="sub">Monthly cash flow if rent lands differently than expected (columns) or you lock a different rate (rows). Blue is positive, red is negative.</p>
+    <div class="scroll">${sensitivityTable(r)}</div>
+  </div>`);
+
+  /* market context */
+  if (market) out.push(marketCard());
+
+  $("results").innerHTML = out.join("");
+
+  // charts + handlers need to run after innerHTML
+  renderProjectionBody();
+  document.querySelectorAll(".toggle button[data-view]").forEach((b) => {
+    b.addEventListener("click", () => {
+      projectionView = b.dataset.view;
+      document.querySelectorAll(".toggle button[data-view]").forEach((x) =>
+        x.setAttribute("aria-pressed", String(x.dataset.view === projectionView)));
+      renderProjectionBody();
+    });
+  });
+  if (market) renderMarketCharts();
+  renderHints();
+}
+
+function tile(k, v, d) {
+  return `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+}
+function proRow(name, annual, sub, cls) {
+  return `<tr class="${cls || ""}${sub ? " sub" : ""}"><td>${name}</td>` +
+    `<td class="${annual < 0 ? "neg" : ""}">${usd(annual)}</td>` +
+    `<td class="${annual < 0 ? "neg" : ""}">${usd(annual / 12)}</td></tr>`;
+}
+
+function renderProjectionBody() {
+  const host = $("projection-body");
+  if (!host) return;
+  const yrs = lastResult.projection.years;
+  if (projectionView === "table") {
+    host.innerHTML = `<div class="scroll"><table>
+      <thead><tr><th>Year</th><th>Value</th><th>Loan balance</th><th>Equity</th><th>NOI</th><th>Cash flow</th><th>Cumulative</th></tr></thead>
+      <tbody>${yrs.map((y) => `<tr><td>${y.year}</td><td>${usd(y.property_value)}</td><td>${usd(y.loan_balance)}</td>
+        <td>${usd(y.equity)}</td><td>${usd(y.noi)}</td>
+        <td class="${y.cash_flow < 0 ? "neg" : ""}">${usd(y.cash_flow)}</td>
+        <td class="${y.cumulative_cash_flow < 0 ? "neg" : ""}">${usd(y.cumulative_cash_flow)}</td></tr>`).join("")}</tbody>
+    </table></div>`;
+    return;
+  }
+  const series = [
+    {name: "Property value", color: "--series-1", values: yrs.map((y) => y.property_value)},
+    {name: "Equity", color: "--series-3", values: yrs.map((y) => y.equity), endLabel: true},
+    {name: "Loan balance", color: "--series-2", values: yrs.map((y) => y.loan_balance)},
+  ];
+  host.innerHTML = legendHTML(series) + `<div class="chart-wrap" id="proj-chart"></div>`;
+  lineChart($("proj-chart"), {
+    labels: yrs.map((y) => "Yr " + y.year),
+    series, height: 260, zeroBase: true,
+    fmtAxis: compact, fmtTip: (v) => usd(v),
+    tipTitle: (i) => "Year " + yrs[i].year,
+    ariaLabel: "Property value, equity and loan balance by year. Table view available.",
+  });
+}
+
+function sensitivityTable(r) {
+  const cells = r.sensitivity.flatMap((row) => row.cells.map((c) => c.monthly_cash_flow));
+  const maxAbs = Math.max(...cells.map(Math.abs), 1);
+  const shifts = r.sensitivity[0].cells.map((c) => c.rent_shift);
+  let html = `<table class="heat"><caption class="vhide">Monthly cash flow by mortgage rate and rent change</caption>
+    <thead><tr><th></th>${shifts.map((s) => `<th>${s > 0 ? "+" : ""}${s}% rent</th>`).join("")}</tr></thead><tbody>`;
+  for (const row of r.sensitivity) {
+    html += `<tr><th>${row.rate.toFixed(2)}%</th>` + row.cells.map((c) => {
+      const {css, strong} = divergingColor(c.monthly_cash_flow, maxAbs);
+      const ink = strong ? "#fff" : cssVar("--text-primary");
+      return `<td class="cell" style="background:${css};color:${ink}">${usd(c.monthly_cash_flow)}</td>`;
+    }).join("") + `</tr>`;
+  }
+  return html + `</tbody></table>`;
+}
+
+function marketCard() {
+  const m = market.market;
+  const hv = m.home_value, rent = m.rent;
+  const place = m.city ? `${m.city}, ${m.state} ${m.zip}` : m.metro;
+  const p2r = m.price_to_rent;
+  const p2rNote = p2r === null ? "" : p2r < 15 ? "favors buying to rent out"
+    : p2r < 21 ? "balanced market" : "rent-cheap market — cash flow is hard here";
+  return `<div class="card">
+    <h2>Market context — ${esc(place)}</h2>
+    <p class="sub">Public data for this market. These figures drove the suggested inputs; every one is editable.</p>
+    <div class="tiles">
+      ${tile("Typical home value", usd(hv.latest), `Zillow ZHVI, ${hv.as_of}`)}
+      ${tile("Past year", pct(hv.cagr_1y), "change in typical value")}
+      ${tile("Typical rent", rent ? usd(rent.latest) : "—", rent ? `Zillow ZORI (${rent.level}), ${rent.as_of}` : "no data for this ZIP")}
+      ${tile("Price-to-rent", p2r === null ? "—" : p2r.toFixed(1) + "×", p2rNote)}
+    </div>
+    <div style="margin-top:18px">
+      <h2>Typical home value</h2>
+      <p class="sub">Zillow Home Value Index, ${hv.history.dates[0]} to ${hv.as_of}. Growth: ${pct(hv.cagr_1y)} past year, ${pct(hv.cagr_5y)}/yr over 5 years.</p>
+      <div class="chart-wrap" id="zhvi-chart"></div>
+    </div>
+    <div style="margin-top:22px">
+      <h2>30-year fixed mortgage rate</h2>
+      <p class="sub">Freddie Mac survey average via FRED, past two years. Your input rate is ${pct(readInputs().interest_rate_pct, 2)}.</p>
+      <div class="chart-wrap" id="rate-chart"></div>
+    </div>
+    <ul class="sources">
+      <li>Home values &amp; rents: ${esc(m.source)} — ${esc(market.provenance.home_value)}, ${esc(market.provenance.rent)}.</li>
+      <li>Mortgage rates: ${esc(market.provenance.mortgage_rate)}.</li>
+      <li>Property tax: ${esc(market.provenance.property_tax)}</li>
+      <li>Suggested appreciation: ${esc(market.provenance.appreciation)}.</li>
+    </ul>
+    <p class="disclaim">${esc(lastResult.disclaimer)}</p>
+  </div>`;
+}
+
+let rateHistory = null;
+function renderMarketCharts() {
+  const hv = market.market.home_value;
+  const el = $("zhvi-chart");
+  if (el && hv.history.values.length) {
+    lineChart(el, {
+      labels: hv.history.dates.map((d) => d.slice(0, 7)),
+      series: [{name: "Typical home value", color: "--series-1", values: hv.history.values, area: true, endLabel: true}],
+      height: 210, fmtAxis: compact, fmtTip: (v) => usd(v),
+      ariaLabel: "Zillow Home Value Index history for this market.",
+    });
+  }
+  const rel = $("rate-chart");
+  if (rel && rateHistory) {
+    lineChart(rel, {
+      labels: rateHistory.dates.map((d) => d.slice(0, 7)),
+      series: [{name: "30-yr fixed", color: "--series-2", values: rateHistory.rates, endLabel: true}],
+      height: 190, fmtAxis: (v) => v.toFixed(1) + "%", fmtTip: (v) => v.toFixed(2) + "%",
+      ariaLabel: "30-year fixed mortgage rate, past two years.",
+    });
+  }
+}
+
+/* ---------- boot ---------- */
+FIELDS.forEach((f) => $(f).addEventListener("input", scheduleAnalyze));
+$("load").addEventListener("click", loadMarket);
+$("zip").addEventListener("keydown", (e) => { if (e.key === "Enter") loadMarket(); });
+$("askprice").addEventListener("keydown", (e) => { if (e.key === "Enter") loadMarket(); });
+$("demo").addEventListener("click", () => {
+  $("zip").value = "44105"; $("askprice").value = "";
+  loadMarket();
+});
+
+let rt = null;
+window.addEventListener("resize", () => {
+  clearTimeout(rt);
+  rt = setTimeout(() => { if (lastResult) { renderProjectionBody(); if (market) renderMarketCharts(); } }, 180);
+});
+
+fetch("/api/rates").then((r) => r.ok ? r.json() : null).then((d) => {
+  if (!d) return;
+  rateHistory = d.thirty_year.history;
+  const el = $("rate-hint");
+  if (el && !market) el.textContent = `Current 30-yr fixed average: ${d.thirty_year.rate}% (${d.thirty_year.as_of}).`;
+}).catch(() => {});
+
+runAnalysis();
+</script>
+</body>
+</html>
