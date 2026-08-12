@@ -10,7 +10,12 @@ Built for the investor deciding whether to pursue a specific property.
 
 ![The analyzer showing a strong deal in Cleveland, OH](docs/screenshot.png)
 
-The same property's market fundamentals — where the story gets more complicated:
+The county's record of the same property, with recorded sold comps and three
+independent value estimates:
+
+![Parcel record and comparable sales](docs/parcel.png)
+
+And its market fundamentals — where the story gets more complicated:
 
 ![Market fundamentals for Cuyahoga County](docs/fundamentals.png)
 
@@ -43,6 +48,15 @@ neighborhood scale, not city scale, and it can differ sharply from the ZIP
 median. FHFA suppresses tracts with too few recorded transactions (roughly a
 third of them), and those fall back to the ZIP series with the substitution
 stated.
+
+**Reads the county's own record of the property.** Where a county adapter is
+configured, the app pulls the assessor's parcel record — market value, living
+area, lot size, land use, zoning, and the last recorded sale — and uses the
+assessor's value as the purchase-price default instead of a ZIP median. It then
+assembles **comparable sales** from recorded deed transfers nearby, sized within
+40% of the subject, and triangulates three independent value estimates: the
+assessor's, the comps', and the ZIP median. They will not agree, and the spread
+is the point.
 
 **Runs a real pro forma.** A year-one operating statement from gross scheduled
 rent down to cash flow, with vacancy, maintenance, CapEx reserves, management,
@@ -95,6 +109,7 @@ All public. **No API keys required for anything.**
 | Data | Source | Via | Cadence |
 |---|---|---|---|
 | Address → ZIP, county, census tract | [Census Geocoder](https://geocoding.geo.census.gov/) | Direct API | Live |
+| Parcel records & sold comps | County assessors | Per-county ArcGIS | Varies |
 | Neighborhood price index | FHFA HPI, census tract | Direct CSV | Annual |
 | Mortgage rates (30/15-yr fixed) | Freddie Mac PMMS | [FRED](https://fred.stlouisfed.org/series/MORTGAGE30US) | Weekly |
 | Typical home value (ZHVI) | [Zillow Research](https://www.zillow.com/research/data/) | Direct CSV | Monthly |
@@ -145,20 +160,58 @@ Downloads are cached on disk. If a source is unreachable the app serves the
 stale cache rather than failing; if there is no cache at all, the API returns a
 clear error and the deal inputs still work by hand.
 
+## County parcel adapters
+
+Assessor data is the one part of this app that cannot be national. Every county
+publishes its own service with its own schema, so support is added a county at a
+time in `data/county_parcels.json` — a service URL, a coordinate system, and a
+field mapping. Cuyahoga County, OH ships configured and verified.
+
+To add a county, call `GET /api/parcel?address=...` for an address in it. With no
+adapter configured, the response searches the ArcGIS Online catalogue and returns
+candidate parcel layers for that county, which is the starting point for a
+mapping. `GET /api/parcel-sources` lists what is configured.
+
+Three things this layer gets right that a naive implementation does not:
+
+- **The geocoder's point is not inside the parcel.** Census returns a coordinate
+  interpolated along a TIGER street centerline, which lands in the roadway.
+  Point-in-polygon finds nothing; the app searches a small radius and picks the
+  parcel whose address actually matches, widening only if it must.
+- **Services often refuse to reproject.** The layer may be Web Mercator while
+  advertising WGS84 in its name. The app converts coordinates into the layer's
+  own system rather than trusting the service to do it.
+- **Assessed is not market.** Ohio publishes appraised market value; other states
+  publish a fixed fraction of it. The config carries a `value_basis` so the app
+  converts back to market, and a new county's mapping should be checked against
+  Zillow's ZIP median before it is trusted.
+
+**Comps come from deed transfers, not the MLS.** That means no photos, no
+condition, no days-on-market, and — critically — no way to tell an arm's-length
+sale from a foreclosure, a family transfer, or a post-renovation flip. The app
+trims outliers beyond a 1.5-IQR fence, shows the discarded rows rather than
+hiding them, reports the interquartile range alongside the median, and says all
+of this on the page. In Cleveland's 44105 the surviving comps still run $11 to
+$140 per square foot; the median is a starting point, not an appraisal.
+
+**Twelve states are non-disclosure states** — AK, ID, KS, LA, MS, MO, MT, ND, NM,
+TX, UT, WY — where sale prices are not public record. Assessed values and
+property characteristics are available there; recorded comps are not, and the app
+says so rather than showing an empty table. This is worth knowing before trusting
+any free tool that claims sold comps in Texas.
+
 ### What is *not* publicly available
 
 Three of these are worth knowing before you trust any tool that claims them:
 
-- **Parcel-level sold comps.** MLS-licensed, with no national public feed. The
-  closest public substitutes are recorded deed transfers at the county
-  recorder and the ZIP-level median list price and price-per-square-foot this
-  app already shows. Anything offering true sold comps for free is either
-  scraping or approximating.
-- **County assessor records** (assessed value, tax history, zoning). No national
-  API — every county publishes differently, though many expose ArcGIS REST
-  services. This needs a per-county adapter; the app uses statewide average
-  effective tax rates as a default and tells you to verify locally, because
-  that is the honest position without one.
+- **MLS listing and sold data.** License-restricted with no public feed. The app
+  uses recorded deed transfers from the assessor instead (see above), which
+  cover fewer attributes and cannot flag a distressed sale. Anything offering
+  true MLS sold comps for free is either scraping or approximating.
+- **A property tax bill.** Assessors publish assessed values, not the levy that
+  produced the bill, and millage varies by school and municipal district within
+  a county. The app uses statewide average effective rates and tells you to
+  verify with the county treasurer.
 - **The U-Haul Growth Index** has no API or data file. It is an annual press
   release, so it ships here as a dated snapshot in `data/migration.json`, and
   it is a self-selected sample of one-way truck rentals at state resolution.
@@ -194,6 +247,8 @@ The web UI is a client of a documented JSON API — interactive docs at `/docs`.
 | `GET /api/market?zip=44105` or `?metro=Austin` | Home value and rent series with growth rates |
 | `GET /api/metros?q=austin` | Metro name lookup |
 | `GET /api/rates` | Current and two years of weekly mortgage rates |
+| `GET /api/parcel?address=...` | Assessor record for the property plus nearby recorded sales |
+| `GET /api/parcel-sources` | Configured counties and the non-disclosure state list |
 | `GET /api/sources` | Every source, its cadence, and what is deliberately absent |
 | `POST /api/analyze` | Full analysis from a deal payload |
 
@@ -217,8 +272,10 @@ pytest -m live      # additionally hits the live public data sources
 app/analysis.py        pure investment math — payments, amortization, IRR, verdict
 app/data_sources.py    public data fetchers with disk cache and graceful fallback
 app/market_signals.py  county/ZIP fundamentals: jobs, people, listings, supply
+app/parcels.py         county assessor adapters: subject property and sold comps
 app/main.py            FastAPI routes
 static/index.html      single-page UI, no build step and no external dependencies
 data/migration.json    dated U-Haul Growth Index snapshot (no API exists)
-tests/                 79 tests, offline by default
+data/county_parcels.json  per-county assessor adapters and field mappings
+tests/                 116 tests, offline by default
 ```

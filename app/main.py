@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from . import data_sources as ds
 from . import market_signals as ms
+from . import parcels as pc
 from .analysis import DealInputs, analyze
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -172,9 +173,20 @@ def prefill(
         except ds.DataUnavailable:
             tract = None
 
+    # The county's own record of this parcel beats a ZIP median as a price
+    # default. Comps and discovery live in /api/parcel so this stays quick.
+    parcel = None
+    if geo and geo.get("county_fips"):
+        try:
+            parcel = pc.subject_property(geo["county_fips"], geo["latitude"],
+                                         geo["longitude"], geo["matched_address"])
+        except Exception:
+            parcel = None
+
     market_value = mkt["home_value"]["latest"]
     market_rent = mkt["rent"]["latest"] if mkt.get("rent") else None
-    use_price = price if price and price > 0 else market_value
+    parcel_value = (parcel or {}).get("market_value") if (parcel or {}).get("match") == "address" else None
+    use_price = price if price and price > 0 else (parcel_value or market_value)
 
     rent_estimate = None
     if market_rent and market_value:
@@ -201,6 +213,7 @@ def prefill(
     return {
         "geocode": geo,
         "tract_hpi": tract,
+        "parcel": parcel,
         "market": mkt,
         "suggested_inputs": {
             "purchase_price": round(use_price),
@@ -217,6 +230,10 @@ def prefill(
             "mortgage_rate": f"FRED MORTGAGE30US, {rate_as_of}" if rate_as_of else "default (FRED unavailable)",
             "property_tax": mkt["tax"]["note"],
             "appreciation": appreciation_basis,
+            "purchase_price": (
+                "your asking price" if price and price > 0 else
+                f"{parcel['county']} assessor market value, tax year {parcel.get('tax_year')}"
+                if parcel_value else f"Zillow ZHVI ZIP median, {mkt['home_value']['as_of']}"),
         },
     }
 
@@ -249,6 +266,59 @@ def fundamentals(
     return report
 
 
+@app.get("/api/parcel")
+def parcel(
+    address: str | None = Query(default=None, description="Street address of the subject property"),
+    lat: float | None = None,
+    lon: float | None = None,
+    county_fips: str | None = None,
+) -> dict:
+    """County assessor record for the subject property plus nearby recorded sales.
+
+    Requires an address (or explicit coordinates and county) because parcel data
+    is inherently property-level. Counties without a configured adapter get an
+    explanation and candidate layers rather than an empty result.
+    """
+    geo = None
+    if address:
+        try:
+            geo = ds.geocode(address)
+        except ds.DataUnavailable as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        lat, lon = geo["latitude"], geo["longitude"]
+        county_fips = geo["county_fips"]
+    if lat is None or lon is None or not county_fips:
+        raise HTTPException(status_code=400,
+                            detail="Provide an address, or lat, lon and county_fips.")
+    try:
+        report = pc.parcel_report(county_fips, lat, lon,
+                                  (geo or {}).get("matched_address") or address,
+                                  (geo or {}).get("state"), (geo or {}).get("county"))
+    except ds.DataUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if geo:
+        report["geocode"] = geo
+    return report
+
+
+@app.get("/api/parcel-sources")
+def parcel_sources() -> dict:
+    """Which counties have a parcel adapter, and which states withhold sale prices."""
+    reg = pc.registry()
+    return {
+        "configured": [
+            {"county_fips": fips, "county": cfg["county"], "state": cfg["state"],
+             "verified": cfg.get("verified"), "attribution": cfg.get("attribution")}
+            for fips, cfg in sorted(reg.get("sources", {}).items())
+        ],
+        "non_disclosure_states": reg.get("non_disclosure_states", {}).get("states", []),
+        "note": ("Assessor records have no national API. Each county publishes its own service, "
+                 "so support is added one county at a time in data/county_parcels.json. "
+                 "GET /api/parcel for an unconfigured county returns candidate layers found "
+                 "through the ArcGIS Online search API."),
+    }
+
+
 @app.get("/api/sources")
 def sources() -> dict:
     """What this app reads, how fresh each source is, and what it costs.
@@ -279,6 +349,9 @@ def sources() -> dict:
              "lag": "~1 quarter", "used_for": "incoming supply"},
             {"name": "Census Geocoder", "via": "geocoding.geo.census.gov", "cadence": "continuous",
              "lag": "live", "used_for": "resolving a street address to ZIP, county and census tract"},
+            {"name": "County assessor parcel records", "via": "per-county ArcGIS services",
+             "cadence": "varies (typically daily to annual)", "lag": "varies",
+             "used_for": "subject property value, size, land use, last sale, and sold comps"},
             {"name": "FHFA House Price Index, census tract", "via": "fhfa.gov", "cadence": "annual",
              "lag": "~1 quarter", "used_for": "neighborhood-level appreciation when an address is given"},
             {"name": "Census ZCTA-to-county crosswalk", "via": "census.gov", "cadence": "decennial",
@@ -289,10 +362,16 @@ def sources() -> dict:
              "lag": "see migration.json", "used_for": "measured state migration"},
         ],
         "not_available_publicly": [
-            {"item": "Parcel-level sold comps", "why": "MLS-licensed; no national public feed. "
-             "Use the county assessor's recorded deed transfers or a paid comps API."},
-            {"item": "County assessor parcel and tax records", "why": "No national API — every county "
-             "publishes differently. Many expose ArcGIS REST services; a per-county adapter is needed."},
+            {"item": "Sold comps in non-disclosure states", "why": "Twelve states do not make sale "
+             "prices public record (" + ", ".join(pc.registry()
+                .get("non_disclosure_states", {}).get("states", [])) + "). Assessed values and "
+             "property characteristics are available there; recorded sale prices are not."},
+            {"item": "County assessor records outside configured counties", "why": "No national API — "
+             "every county publishes differently. See /api/parcel-sources for what is configured; "
+             "an unconfigured county returns candidate ArcGIS layers to map."},
+            {"item": "MLS listing and sold data", "why": "License-restricted with no public feed. "
+             "This app uses recorded deed transfers from the assessor instead, which cover fewer "
+             "attributes and cannot flag a distressed or non-arm's-length sale."},
             {"item": "Price index for every census tract", "why": "FHFA suppresses tracts with too few "
              "recorded transactions, so roughly a third of tracts have no published index. Those fall "
              "back to the ZIP-level series."},

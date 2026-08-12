@@ -217,6 +217,22 @@
   .heat th { font-size: 11.5px; color: var(--text-muted); font-weight: 600; padding: 3px 6px; }
   .heat td.cell { border-radius: 5px; text-align: center; padding: 9px 6px; font-variant-numeric: tabular-nums; font-weight: 550; min-width: 74px; }
 
+  /* ---- parcel: value triangulation bars ---- */
+  .vbars { display: flex; flex-direction: column; gap: 7px; }
+  .vrow { display: grid; grid-template-columns: 150px minmax(70px,1fr) 96px 150px; gap: 12px; align-items: center; }
+  @media (max-width: 760px) { .vrow { grid-template-columns: 130px minmax(50px,1fr) 88px; } .vrow .vn { display: none; } }
+  .vk { font-size: 13px; color: var(--text-secondary); }
+  .vrow.me .vk { color: var(--text-primary); font-weight: 580; }
+  .vtrack { height: 14px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+  .vfill { display: block; height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; }
+  .vrow.me .vfill { background: var(--series-3); }
+  .vv { font-size: 13.5px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .vn { font-size: 11.5px; color: var(--text-muted); }
+  .tag-pill { font-size: 11.5px; color: var(--text-muted); border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tr.dim td { opacity: .5; }
+  td .tag { font-size: 11px; color: var(--text-muted); }
+
   /* ---- fundamentals findings ---- */
   ul.findings { list-style: none; margin: 14px 0 0; padding: 0; }
   ul.findings li { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--grid); }
@@ -261,7 +277,7 @@
 <div class="lookup">
   <div class="f grow">
     <label for="locator">Property address <span class="opt">or ZIP code</span></label>
-    <input id="locator" placeholder="1401 Marlowe Ave, Lakewood, OH" autocomplete="street-address">
+    <input id="locator" placeholder="13301 Caine Ave, Cleveland, OH" autocomplete="street-address">
   </div>
   <div class="f">
     <label for="askprice">Asking price <span class="opt">optional</span></label>
@@ -341,6 +357,7 @@ const FIELDS = ["purchase_price","down_payment_pct","interest_rate_pct","loan_te
 let market = null;        // last /api/prefill payload
 let lastResult = null;    // last /api/analyze payload
 let fundamentals = null;  // last /api/fundamentals payload
+let parcel = null;        // last /api/parcel payload
 let projectionView = "chart";
 
 /* ---------- formatting ---------- */
@@ -449,6 +466,7 @@ async function loadMarket() {
     renderMatched();
     await runAnalysis();
     loadFundamentals(loc, m.state);   // fans out to a dozen series; never block the deal on it
+    if (loc.address) loadParcel(loc.address);
   } catch (e) {
     setStatus(e.message, true);
     market = null;
@@ -456,6 +474,20 @@ async function loadMarket() {
   } finally {
     $("load").disabled = false;
   }
+}
+
+async function loadParcel(address) {
+  parcel = null;
+  const host = $("parcel-card");
+  if (host) host.innerHTML = `<div class="card"><div class="empty">Looking up the county parcel record…</div></div>`;
+  try {
+    const r = await fetch("/api/parcel?" + new URLSearchParams({address}));
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    parcel = await r.json();
+  } catch (e) {
+    parcel = {error: e.message};
+  }
+  renderParcel();
 }
 
 async function loadFundamentals(loc, state) {
@@ -676,6 +708,9 @@ function render() {
     </div>
   </div>`);
 
+  /* property record (loaded separately; placeholder keeps its slot) */
+  out.push(`<div id="parcel-card"></div>`);
+
   /* pro forma */
   const e = r.year_one.expenses;
   const money = (n) => `<td class="${n < 0 ? "neg" : ""}">${usd(n)}</td>`;
@@ -748,6 +783,7 @@ function render() {
   if (market) out.push(marketCard());
 
   $("results").innerHTML = out.join("");
+  renderParcel();
   renderFundamentals();
 
   // charts + handlers need to run after innerHTML
@@ -816,6 +852,110 @@ function sensitivityTable(r) {
     }).join("") + `</tr>`;
   }
   return html + `</tbody></table>`;
+}
+
+function renderParcel() {
+  const host = $("parcel-card");
+  if (!host || !parcel) return;
+  if (parcel.error) {
+    host.innerHTML = `<div class="card"><h2>Property record</h2>
+      <p class="sub">Unavailable: ${esc(parcel.error)}</p></div>`;
+    return;
+  }
+  if (!parcel.supported) {
+    const cands = parcel.candidate_layers || [];
+    host.innerHTML = `<div class="card">
+      <h2>Property record — not yet available for this county</h2>
+      <p class="sub">${esc(parcel.note)}</p>
+      ${parcel.non_disclosure_state ? `<p class="hint flag">This is also a non-disclosure state: sale prices are not public record here, so recorded comps would not be available even with an adapter.</p>` : ""}
+      ${cands.length ? `<p class="sub" style="margin-top:12px">Candidate parcel layers found for this county:</p>
+        <ul class="sources">${cands.map((c) => `<li>${esc(c.title)} <span style="opacity:.7">(${esc(c.owner)})</span><br><code style="font-size:11px">${esc(c.url)}</code></li>`).join("")}</ul>` : ""}
+    </div>`;
+    return;
+  }
+
+  const s = parcel.subject, c = parcel.comps || {};
+  if (!s) {
+    host.innerHTML = `<div class="card"><h2>Property record</h2>
+      <p class="sub">No parcel matched this address in ${esc(parcel.county)}'s records.</p></div>`;
+    return;
+  }
+
+  const tiles = [];
+  if (s.market_value) tiles.push(tile("Assessor market value", usd(s.market_value),
+    `${esc(parcel.county)}${s.tax_year ? `, tax year ${s.tax_year}` : ""}`));
+  if (s.living_area) tiles.push(tile("Living area", `${countFmt(s.living_area)} sq ft`,
+    s.value_per_sqft ? `${usd(s.value_per_sqft)}/sq ft assessed` : "per county record"));
+  if (s.lot_acres) tiles.push(tile("Lot", `${s.lot_acres} ac`,
+    `${countFmt(s.lot_acres * 43560)} sq ft${s.zoning ? ` · zoned ${esc(s.zoning)}` : ""}`));
+  if (s.rooms) tiles.push(tile("Rooms", String(s.rooms), s.land_use ? esc(String(s.land_use).toLowerCase()) : "total rooms"));
+  if (s.last_sale_price) tiles.push(tile("Last recorded sale", usd(s.last_sale_price),
+    s.last_sale_date || "date not recorded"));
+
+  host.innerHTML = `<div class="card">
+    <div class="card-head">
+      <div>
+        <h2>The property on record</h2>
+        <p class="sub">What ${esc(parcel.county)} says about this specific parcel${s.match === "nearest" ? " — nearest parcel, the exact address did not match" : ""}.</p>
+      </div>
+      ${s.parcel_id ? `<span class="tag-pill">Parcel ${esc(s.parcel_id)}</span>` : ""}
+    </div>
+    <div class="tiles">${tiles.join("")}</div>
+    ${valueTriangulation(s, c)}
+    ${compsBlock(c)}
+    <ul class="sources">
+      <li>Parcel record: ${esc(parcel.source || parcel.county)}${parcel.verified ? ` · adapter verified ${esc(parcel.verified)}` : ""}.</li>
+      ${c.available ? `<li>Comparable sales: recorded deed transfers from the same source. Not MLS — public records cannot flag a distressed or non-arm's-length sale.</li>` : ""}
+    </ul>
+  </div>`;
+}
+
+function valueTriangulation(s, c) {
+  const entered = parseFloat($("purchase_price").value) || 0;
+  const zip = market && market.market.home_value ? market.market.home_value.latest : null;
+  const rows = [
+    {k: "Your purchase price", v: entered, me: true},
+    {k: "County assessor", v: s.market_value, note: s.tax_year ? `tax year ${s.tax_year}` : ""},
+    {k: "Recorded comps", v: c.implied_value, note: c.implied_value ? `median ${usd(c.median_price_per_sqft)}/sq ft` : ""},
+    {k: "ZIP median home", v: zip, note: "Zillow ZHVI, all homes"},
+  ].filter((r) => r.v > 0);
+  if (rows.length < 2) return "";
+  const max = Math.max(...rows.map((r) => r.v));
+  return `<div style="margin-top:20px">
+    <h2>What is it worth?</h2>
+    <p class="sub">Independent estimates of this property's value. They are built from different data and will not agree — the spread is the useful part.</p>
+    <div class="vbars">
+      ${rows.map((r) => `<div class="vrow${r.me ? " me" : ""}">
+        <span class="vk">${esc(r.k)}</span>
+        <span class="vtrack"><span class="vfill" style="width:${(r.v / max * 100).toFixed(1)}%"></span></span>
+        <span class="vv">${usd(r.v)}</span>
+        <span class="vn">${esc(r.note || "")}</span>
+      </div>`).join("")}
+    </div>
+    ${c.implied_value_low ? `<p class="hint" style="margin-top:12px">Comps put this property between ${usd(c.implied_value_low)} and ${usd(c.implied_value_high)} across the middle half of nearby sale prices per square foot.</p>` : ""}
+  </div>`;
+}
+
+function compsBlock(c) {
+  if (!c) return "";
+  if (!c.available) {
+    return `<div style="margin-top:20px"><h2>Comparable sales</h2>
+      <p class="sub">${esc(c.note || "No recorded sales available.")}</p></div>`;
+  }
+  return `<div style="margin-top:20px">
+    <h2>Comparable sales</h2>
+    <p class="sub">Recorded transfers within ${c.radius_m} m over the past ${c.years} years, sized within 40% of this property. ${c.qualifying} qualified${c.outliers_excluded ? `, ${c.outliers_excluded} excluded from the median as extreme` : ""}.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Address</th><th>Sold</th><th>Price</th><th>Sq ft</th><th>$/sq ft</th></tr></thead>
+      <tbody>${c.comps.map((x) => `<tr${x.outlier ? ' class="dim"' : ""}>
+        <td>${esc((x.address || "").replace(/\s+/g, " "))}${x.outlier ? ' <span class="tag">excluded</span>' : ""}</td>
+        <td>${esc(x.last_sale_date || "")}</td>
+        <td>${usd(x.last_sale_price)}</td>
+        <td>${countFmt(x.living_area)}</td>
+        <td>${usd(x.sale_price_per_sqft)}</td></tr>`).join("")}</tbody>
+    </table></div>
+    <p class="hint">${esc(c.dispersion_note || "")}</p>
+  </div>`;
 }
 
 const GLYPH = {good: "▲", neutral: "—", bad: "▼"};
@@ -997,7 +1137,7 @@ $("load").addEventListener("click", loadMarket);
 $("locator").addEventListener("keydown", (e) => { if (e.key === "Enter") loadMarket(); });
 $("askprice").addEventListener("keydown", (e) => { if (e.key === "Enter") loadMarket(); });
 $("demo").addEventListener("click", () => {
-  $("locator").value = "1401 Marlowe Ave, Lakewood, OH"; $("askprice").value = "";
+  $("locator").value = "13301 Caine Ave, Cleveland, OH"; $("askprice").value = "";
   loadMarket();
 });
 

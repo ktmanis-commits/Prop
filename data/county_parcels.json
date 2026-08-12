@@ -1,0 +1,52 @@
+{
+  "_comment": [
+    "County parcel adapters. There is no national parcel API, so each county is configured",
+    "individually against its public ArcGIS Feature/Map Service. Add a county by finding its",
+    "parcel layer (GET /api/parcel-sources?address=... suggests candidates via the ArcGIS",
+    "Online search API), then mapping its field names below. Every field is optional except",
+    "address; anything absent simply does not render.",
+    "",
+    "value_basis: 'market' when the value field is the appraiser's market value, or a decimal",
+    "fraction (e.g. 0.35) when the county publishes an assessed value at that ratio, so the app",
+    "can convert back to market. Verify empirically against Zillow ZHVI for the same ZIP before",
+    "trusting a new county's mapping."
+  ],
+  "sources": {
+    "39035": {
+      "county": "Cuyahoga County",
+      "state": "OH",
+      "urls": [
+        "https://gis.cuyahogacounty.us/server/rest/services/CCGIS/Open_Data_Combined_Parcels_WGS84/MapServer/1",
+        "https://gis.cuyahogacounty.us/server/rest/services/CCGIS/Open_Data_Combined_Parcels_WGS84/MapServer/0"
+      ],
+      "wkid": 102100,
+      "attribution": "Cuyahoga County Fiscal Office / CCGIS open data",
+      "value_basis": "market",
+      "verified": "2026-08-12",
+      "residential_where": "property_class='R'",
+      "fields": {
+        "parcel_id": "parcelpin",
+        "address": "par_addr_all",
+        "city": "par_city",
+        "zip": "par_zip",
+        "owner": "deeded_owner",
+        "market_value": "gross_certified_total",
+        "land_value": "gross_certified_land",
+        "building_value": "gross_certified_building",
+        "living_area": "total_res_liv_area",
+        "rooms": "total_res_rooms",
+        "lot_acres": "total_acreage",
+        "land_use": "tax_luc_description",
+        "zoning": "zoning_code",
+        "buildings": "res_bldg_count",
+        "last_sale_price": "sales_amount",
+        "last_sale_date": "transfer_date",
+        "tax_year": "tax_year"
+      }
+    }
+  },
+  "non_disclosure_states": {
+    "_note": "States where sale prices are not public record. Assessed values and property characteristics are still available, but sold comps are not.",
+    "states": ["AK", "ID", "KS", "LA", "MS", "MO", "MT", "ND", "NM", "TX", "UT", "WY"]
+  }
+}
